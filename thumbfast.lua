@@ -175,6 +175,14 @@ local function calc_dimensions()
         new_width = math.floor(new_width * ratio / desired_ratio)
     end
 
+    if new_width % 2 ~= 0 then
+        new_width = new_width + 1
+    end
+
+    if new_height % 2 ~= 0 then
+        new_height = new_height + 1
+    end
+
     thumb_size, effective_w, effective_h = new_width * new_height * 4, new_width, new_height
 end
 
