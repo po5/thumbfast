@@ -452,6 +452,7 @@ mp.observe_property("edition", "native", sync_changes)
 mp.register_script_message("clear", clear)
 
 function file_load()
+    clear()
     spawned = false
     can_generate = true
     network = mp.get_property_bool("demuxer-via-network", false)
