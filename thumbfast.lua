@@ -196,6 +196,12 @@ local function spawn(time)
 
     spawned = true
 
+    local open_filename = mp.get_property("stream-open-filename")
+    local ytdl = open_filename and mp.get_property_bool("demuxer-via-network", false) and path ~= open_filename
+    if ytdl then
+        path = open_filename
+    end
+
     if os_name == "" then
         os_name = get_os()
     end
