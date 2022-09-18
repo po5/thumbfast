@@ -180,7 +180,7 @@ end
 
 local function info()
     local display_w, display_h = effective_w, effective_h
-    if last_rotate % 180 == 90 then
+    if mp.get_property_number("video-params/rotate", 0) % 180 == 90 then
         display_w, display_h = effective_h, effective_w
     end
 
@@ -318,7 +318,7 @@ local function display_img(w, h, thumbtime, display_time, script, redraw)
     if x ~= nil then
         local display_w, display_h = w, h
 
-        if last_rotate % 180 == 90 then
+        if mp.get_property_number("video-params/rotate", 0) % 180 == 90 then
             display_w, display_h = h, w
         end
 
@@ -327,7 +327,7 @@ local function display_img(w, h, thumbtime, display_time, script, redraw)
         )
     elseif script then
         local display_w, display_h = w, h
-        if last_rotate % 180 == 90 then
+        if mp.get_property_number("video-params/rotate", 0) % 180 == 90 then
             display_w, display_h = h, w
         end
 
