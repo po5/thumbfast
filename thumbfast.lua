@@ -315,6 +315,10 @@ local function display_img(w, h, thumbtime, display_time, script, redraw)
 
         if last_display_time > display_time then return end
 
+        -- os.rename can't replace files on windows
+        if os_name == "Windows" then
+            os.remove(options.thumbnail..".bgra")
+        end
         -- move the file because it can get overwritten while overlay-add is reading it, and crash the player
         os.rename(options.thumbnail, options.thumbnail..".bgra")
 
