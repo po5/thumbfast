@@ -10,6 +10,7 @@ Default settings are listed in thumbfast.conf, copy it to your mpv `script-opts`
 ## UI support
 - [uosc](https://github.com/tomasklaen/uosc)
 - [osc.lua](https://github.com/po5/thumbfast/blob/vanilla-osc/player/lua/osc.lua) (fork)
+- [progressbar](https://github.com/po5/thumbfast/blob/mpv-progressbar/build/progressbar.lua) (fork)
 
 ## Features
 No dependencies, no background thumbnail generation hogging your CPU.  
