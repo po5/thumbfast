@@ -428,6 +428,8 @@ end)
 local function clear()
     last_display_time = mp.get_time()
     can_generate = true
+    last_x = nil
+    last_y = nil
     mp.command_native(
         {name = "overlay-remove", id=options.overlay_id}
     )
