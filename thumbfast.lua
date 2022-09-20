@@ -19,7 +19,7 @@ local options = {
     overlay_id = 42,
 
     -- Thumbnail interval in seconds, set to 0 to disable (warning: high cpu usage)
-    interval = 10,
+    interval = 6,
 
     -- Spawn thumbnailer on file load for faster initial thumbnails
     spawn_first = false,
@@ -41,8 +41,10 @@ math.randomseed(os.time())
 local unique = math.random(10000000)
 
 local spawned = false
-local disabled = false
 local can_generate = true
+local network = false
+local disabled = false
+local interval = 0
 
 local x = nil
 local y = nil
@@ -282,13 +284,13 @@ local function run(command, callback)
 end
 
 local function thumb_index(thumbtime)
-    return math.floor(thumbtime / options.interval)
+    return math.floor(thumbtime / interval)
 end
 
 local function index_time(index, thumbtime)
-    if options.interval > 0 then
-        local time = index * options.interval
-        return time + options.interval / 3
+    if interval > 0 then
+        local time = index * interval
+        return time + interval / 3
     else
         return thumbtime
     end
@@ -380,7 +382,7 @@ mp.register_script_message("thumb", function(time, r_x, r_y, script)
     index = thumb_index(time)
     seek_time = index_time(index, time)
 
-    if last_request == seek_time or (options.interval > 0 and index == last_index) then
+    if last_request == seek_time or (interval > 0 and index == last_index) then
         last_index = index
         if x ~= last_x or y ~= last_y then
             last_x, last_y = x, y
@@ -475,6 +477,7 @@ function file_load()
     can_generate = true
     network = mp.get_property_bool("demuxer-via-network", false)
     disabled = (network and not options.network) or (is_audio_file() and not options.audio)
+    interval = math.max(mp.get_property_number("duration", 1) / 60, options.interval)
     if options.spawn_first and not disabled then
         spawn(mp.get_property_number("time-pos", 0))
     end
