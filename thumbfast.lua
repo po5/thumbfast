@@ -19,7 +19,12 @@ local options = {
     overlay_id = 42,
 
     -- Thumbnail interval in seconds, set to 0 to disable (warning: high cpu usage)
+    -- Clamped to min_thumbnails and max_thumbnails
     interval = 6,
+
+    -- Number of thumbnails
+    min_thumbnails = 1,
+    max_thumbnails = 120,
 
     -- Spawn thumbnailer on file load for faster initial thumbnails
     spawn_first = false,
@@ -34,6 +39,10 @@ local options = {
 mp.utils = require "mp.utils"
 mp.options = require "mp.options"
 mp.options.read_options(options, "thumbfast")
+
+if options.min_thumbnails < 1 then
+    options.min_thumbnails = 1
+end
 
 local os_name = ""
 
@@ -477,7 +486,7 @@ function file_load()
     can_generate = true
     network = mp.get_property_bool("demuxer-via-network", false)
     disabled = (network and not options.network) or (is_audio_file() and not options.audio)
-    interval = math.max(mp.get_property_number("duration", 1) / 60, options.interval)
+    interval = math.min(math.max(mp.get_property_number("duration", 1) / options.max_thumbnails, options.interval), mp.get_property_number("duration", options.interval * options.min_thumbnails) / options.min_thumbnails)
     if options.spawn_first and not disabled then
         spawn(mp.get_property_number("time-pos", 0))
     end
