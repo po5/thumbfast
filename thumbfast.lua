@@ -305,6 +305,22 @@ local function index_time(index, thumbtime)
     end
 end
 
+local function thumb(w, h, thumbtime, display_time, script)
+    local display_w, display_h = w, h
+    if mp.get_property_number("video-params/rotate", 0) % 180 == 90 then
+        display_w, display_h = h, w
+    end
+
+    if x ~= nil then
+        mp.command_native(
+            {name = "overlay-add", id=options.overlay_id, x=x, y=y, file=options.thumbnail..".bgra", offset=0, fmt="bgra", w=display_w, h=display_h, stride=(4*display_w)}
+        )
+    elseif script then
+        json, err = mp.utils.format_json({width=display_w, height=display_h, x=x, y=y, socket=options.socket, thumbnail=options.thumbnail, overlay_id=options.overlay_id})
+        mp.commandv("script-message-to", script, "thumbfast-render", json)
+    end
+end
+
 local function display_img(w, h, thumbtime, display_time, script, redraw)
     if last_display_time > display_time or disabled then return end
 
@@ -317,9 +333,17 @@ local function display_img(w, h, thumbtime, display_time, script, redraw)
                 can_generate = true
                 return
             end
+
             if thumbtime < 0 then
                 thumbtime = thumbtime + 1
             end
+
+            -- display last successful thumbnail if one exists
+            local info2 = mp.utils.file_info(options.thumbnail..".bgra")
+            if info2 and info2.size == thumb_size then
+                thumb(w, h, thumbtime, display_time, script)
+            end
+
             -- retry up to 5 times
             return mp.add_timeout(0.05, function() display_img(w, h, thumbtime < 0 and thumbtime or -5, display_time, script) end)
         end
@@ -337,32 +361,15 @@ local function display_img(w, h, thumbtime, display_time, script, redraw)
     else
         local info = mp.utils.file_info(options.thumbnail..".bgra")
         if not info or info.size ~= thumb_size then
+            -- still waiting on intial thumbnail
             return mp.add_timeout(0.05, function() display_img(w, h, thumbtime, display_time, script) end)
         end
         if not can_generate then
-            return
+            return thumb(w, h, thumbtime, display_time, script)
         end
     end
 
-    if x ~= nil then
-        local display_w, display_h = w, h
-
-        if mp.get_property_number("video-params/rotate", 0) % 180 == 90 then
-            display_w, display_h = h, w
-        end
-
-        mp.command_native(
-            {name = "overlay-add", id=options.overlay_id, x=x, y=y, file=options.thumbnail..".bgra", offset=0, fmt="bgra", w=display_w, h=display_h, stride=(4*display_w)}
-        )
-    elseif script then
-        local display_w, display_h = w, h
-        if mp.get_property_number("video-params/rotate", 0) % 180 == 90 then
-            display_w, display_h = h, w
-        end
-
-        json, err = mp.utils.format_json({width=display_w, height=display_h, x=x, y=y, socket=options.socket, thumbnail=options.thumbnail, overlay_id=options.overlay_id})
-        mp.commandv("script-message-to", script, "thumbfast-render", json)
-    end
+    thumb(w, h, thumbtime, display_time, script)
 
     can_generate = true
 
