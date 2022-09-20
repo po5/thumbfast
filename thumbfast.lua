@@ -23,7 +23,7 @@ local options = {
     interval = 6,
 
     -- Number of thumbnails
-    min_thumbnails = 1,
+    min_thumbnails = 6,
     max_thumbnails = 120,
 
     -- Spawn thumbnailer on file load for faster initial thumbnails
