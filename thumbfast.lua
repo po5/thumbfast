@@ -134,9 +134,8 @@ local function get_os()
 end
 
 local function is_audio_file()
-    if mp.get_property("track-list/0/type") == "audio" and mp.get_property("track-list/1/type") ~= "video" then
-        return true
-    elseif mp.get_property("track-list/0/albumart") == "yes" then
+    if mp.get_property_native('current-tracks/video/image') and
+        mp.get_property_native("current-tracks/video/albumart") then
         return true
     end
     return false
