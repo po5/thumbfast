@@ -493,7 +493,7 @@ function file_load()
     spawned = false
     can_generate = true
     network = mp.get_property_bool("demuxer-via-network", false)
-    disabled = (network and not options.network) or (is_audio_file() and not options.audio)
+    disabled = (network and not options.network) or (is_audio_file() and not options.audio) or mp.get_property_number("duration") == 0
     interval = math.min(math.max(mp.get_property_number("duration", 1) / options.max_thumbnails, options.interval), mp.get_property_number("duration", options.interval * options.min_thumbnails) / options.min_thumbnails)
     if options.spawn_first and not disabled then
         spawn(mp.get_property_number("time-pos", 0))
