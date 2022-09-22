@@ -159,11 +159,13 @@ local function calc_dimensions()
     local height = mp.get_property_number("video-out-params/dh")
     if not width or not height then return end
 
+    local scale = mp.get_property_number("display-hidpi-scale", 1)
+
     if width / height > options.max_width / options.max_height then
-        effective_w = options.max_width
+        effective_w = math.floor(options.max_width * scale + 0.5)
         effective_h = math.floor(height / width * effective_w + 0.5)
     else
-        effective_h = options.max_height
+        effective_h = math.floor(options.max_height * scale + 0.5)
         effective_w = math.floor(width / height * effective_h + 0.5)
     end
 
@@ -478,6 +480,7 @@ local function file_load()
     if options.spawn_first then spawn(mp.get_property_number("time-pos", 0)) end
 end
 
+mp.observe_property("display-hidpi-scale", "native", watch_changes)
 mp.observe_property("video-out-params", "native", watch_changes)
 mp.observe_property("vf", "native", watch_changes)
 mp.observe_property("vid", "native", sync_changes)
