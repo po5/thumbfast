@@ -81,6 +81,7 @@ local last_rotate = 0
 
 local function get_os()
     local raw_os_name = ""
+    local raw_arch_name = ""
 
     if jit and jit.os and jit.arch then
         raw_os_name = jit.os
@@ -179,7 +180,7 @@ local function info()
         display_w, display_h = effective_h, effective_w
     end
 
-    json, err = mp.utils.format_json({width=display_w, height=display_h, disabled=disabled, socket=options.socket, thumbnail=options.thumbnail, overlay_id=options.overlay_id})
+    local json, err = mp.utils.format_json({width=display_w, height=display_h, disabled=disabled, socket=options.socket, thumbnail=options.thumbnail, overlay_id=options.overlay_id})
     mp.commandv("script-message", "thumbfast-info", json)
 end
 
@@ -281,7 +282,7 @@ local function index_time(index, thumbtime)
     end
 end
 
-local function thumb(w, h, thumbtime, display_time, script)
+local function draw(w, h, thumbtime, display_time, script)
     local display_w, display_h = w, h
     if mp.get_property_number("video-params/rotate", 0) % 180 == 90 then
         display_w, display_h = h, w
@@ -292,7 +293,7 @@ local function thumb(w, h, thumbtime, display_time, script)
             {name = "overlay-add", id=options.overlay_id, x=x, y=y, file=options.thumbnail..".bgra", offset=0, fmt="bgra", w=display_w, h=display_h, stride=(4*display_w)}
         )
     elseif script then
-        json, err = mp.utils.format_json({width=display_w, height=display_h, x=x, y=y, socket=options.socket, thumbnail=options.thumbnail, overlay_id=options.overlay_id})
+        local json, err = mp.utils.format_json({width=display_w, height=display_h, x=x, y=y, socket=options.socket, thumbnail=options.thumbnail, overlay_id=options.overlay_id})
         mp.commandv("script-message-to", script, "thumbfast-render", json)
     end
 end
@@ -317,7 +318,7 @@ local function display_img(w, h, thumbtime, display_time, script, redraw)
             -- display last successful thumbnail if one exists
             local info2 = mp.utils.file_info(options.thumbnail..".bgra")
             if info2 and info2.size == thumb_size then
-                thumb(w, h, thumbtime, display_time, script)
+                draw(w, h, thumbtime, display_time, script)
             end
 
             -- retry up to 5 times
@@ -341,11 +342,11 @@ local function display_img(w, h, thumbtime, display_time, script, redraw)
             return mp.add_timeout(0.05, function() display_img(w, h, thumbtime, display_time, script) end)
         end
         if not can_generate then
-            return thumb(w, h, thumbtime, display_time, script)
+            return draw(w, h, thumbtime, display_time, script)
         end
     end
 
-    thumb(w, h, thumbtime, display_time, script)
+    draw(w, h, thumbtime, display_time, script)
 
     can_generate = true
 
@@ -359,7 +360,7 @@ local function display_img(w, h, thumbtime, display_time, script, redraw)
     end
 end
 
-mp.register_script_message("thumb", function(time, r_x, r_y, script)
+local function thumb(time, r_x, r_y, script)
     if disabled then return end
 
     time = tonumber(time)
@@ -371,8 +372,8 @@ mp.register_script_message("thumb", function(time, r_x, r_y, script)
         x, y = math.floor(r_x + 0.5), math.floor(r_y + 0.5)
     end
 
-    index = thumb_index(time)
-    seek_time = index_time(index, time)
+    local index = thumb_index(time)
+    local seek_time = index_time(index, time)
 
     if last_request == seek_time or (interval > 0 and index == last_index) then
         last_index = index
@@ -383,7 +384,7 @@ mp.register_script_message("thumb", function(time, r_x, r_y, script)
         return
     end
 
-    cur_request_time = mp.get_time()
+    local cur_request_time = mp.get_time()
 
     last_index = index
     last_request_time = cur_request_time
@@ -399,7 +400,7 @@ mp.register_script_message("thumb", function(time, r_x, r_y, script)
     end
 
     run("async seek "..seek_time.." absolute+keyframes", function() if can_generate then display_img(effective_w, effective_h, time, cur_request_time, script) end end)
-end)
+end
 
 local function clear()
     last_display_time = mp.get_time()
@@ -409,6 +410,18 @@ local function clear()
     mp.command_native(
         {name = "overlay-remove", id=options.overlay_id}
     )
+end
+
+local function file_load()
+    clear()
+    spawned = false
+    can_generate = true
+    network = mp.get_property_bool("demuxer-via-network", false)
+    disabled = (network and not options.network) or (is_audio_file() and not options.audio)
+    interval = math.min(math.max(mp.get_property_number("duration", 1) / options.max_thumbnails, options.interval), mp.get_property_number("duration", options.interval * options.min_thumbnails) / options.min_thumbnails)
+    if options.spawn_first and not disabled then
+        spawn(mp.get_property_number("time-pos", 0))
+    end
 end
 
 local function watch_changes()
@@ -462,22 +475,7 @@ mp.observe_property("vf", "native", watch_changes)
 mp.observe_property("vid", "native", sync_changes)
 mp.observe_property("edition", "native", sync_changes)
 
+mp.register_script_message("thumb", thumb)
 mp.register_script_message("clear", clear)
-
-function file_load()
-    clear()
-
-    network = mp.get_property_bool("demuxer-via-network", false)
-    local image = mp.get_property_native('current-tracks/video/image', true)
-    local albumart = image and mp.get_property_native("current-tracks/video/albumart", false)
-
-    disabled = (network and not options.network) or (albumart and not options.audio) or (image and not albumart)
-    if disabled then return end
-
-    interval = math.min(math.max(mp.get_property_number("duration", 1) / options.max_thumbnails, options.interval), mp.get_property_number("duration", options.interval * options.min_thumbnails) / options.min_thumbnails)
-
-    spawned = false
-    if options.spawn_first then spawn(mp.get_property_number("time-pos", 0)) end
-end
 
 mp.register_event("file-loaded", file_load)
