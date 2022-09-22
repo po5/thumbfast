@@ -79,9 +79,6 @@ local last_vf_runtime = ""
 
 local last_rotate = 0
 
-local par = ""
-local last_par = ""
-
 local function get_os()
     local raw_os_name = ""
     local raw_arch_name = ""
@@ -134,14 +131,6 @@ local function get_os()
     return str_os_name
 end
 
-local function is_audio_file()
-    if mp.get_property_native('current-tracks/video/image') and
-        mp.get_property_native("current-tracks/video/albumart") then
-        return true
-    end
-    return false
-end
-
 local function vf_string(filters)
     local vf = ""
     local vf_table = mp.get_property_native("vf")
@@ -164,37 +153,25 @@ local function vf_string(filters)
     return vf
 end
 
+local function round(number)
+	local modulus = number % 1
+	return modulus < 0.5 and math.floor(number) or math.ceil(number)
+end
+
 local function calc_dimensions()
-    -- the math here is bad, I think
-    local ratio = mp.get_property_number("video-out-params/aspect")
-    if not ratio then return end
-    local v_par = mp.get_property_number("video-out-params/par", 1)
-    local new_width = math.floor(options.max_width * v_par)
-    local new_height = options.max_height
-    ratio = math.floor(ratio * 1000000) / 1000000
-    local desired_ratio = new_width / new_height
+    local width = mp.get_property_number("video-out-params/dw")
+    local height = mp.get_property_number("video-out-params/dh")
+    if not width or not height then return end
 
-    if v_par == 1 then
-        par = ":force_original_aspect_ratio=decrease"
+    if width / height > options.max_width / options.max_height then
+        effective_w = options.max_width
+        effective_h = round(height / width * effective_w)
     else
-        par = ""
+        effective_h = options.max_height
+        effective_w = round(width / height * effective_h)
     end
 
-    if ratio > desired_ratio then
-        new_height = math.floor(new_height * desired_ratio / ratio)
-    else
-        new_width = math.floor(new_width * ratio / desired_ratio)
-    end
-
-    if new_width % 2 ~= 0 then
-        new_width = new_width + 1
-    end
-
-    if new_height % 2 ~= 0 then
-        new_height = new_height + 1
-    end
-
-    thumb_size, effective_w, effective_h = new_width * new_height * 4, new_width, new_height
+    thumb_size = effective_w * effective_h * 4
 end
 
 local function info()
@@ -263,7 +240,7 @@ local function spawn(time)
             "--ytdl-format=worst", "--demuxer-readahead-secs=0", "--demuxer-max-bytes=128KiB",
             "--dither=no", "--vd-lavc-skiploopfilter=all", "--vd-lavc-software-fallback=1", "--vd-lavc-fast",
             "--tone-mapping="..(mp.get_property_number("tone-mapping") or "auto"), "--tone-mapping-param="..(mp.get_property_number("tone-mapping-param") or "default"), "--hdr-compute-peak=no",
-            "--vf="..vf_string(filters_all).."scale=w="..effective_w..":h="..effective_h..par..",pad=w="..effective_w..":h="..effective_h..":x=(ow-iw)/2:y=(oh-ih)/2,format=bgra",
+            "--vf="..vf_string(filters_all).."scale=w="..effective_w..":h="..effective_h..",pad=w="..effective_w..":h="..effective_h..":x=(ow-iw)/2:y=(oh-ih)/2,format=bgra",
             "--video-rotate="..last_rotate,
             "--ovc=rawvideo", "--of=image2", "--ofopts=update=1", "--o="..options.thumbnail
         }},
@@ -457,7 +434,7 @@ local function watch_changes()
     local rotate = mp.get_property_number("video-rotate", 0)
 
     if spawned then
-        if old_w ~= effective_w or old_h ~= effective_h or last_vf_reset ~= vf_reset or (last_rotate % 180) ~= (rotate % 180) or par ~= last_par then
+        if old_w ~= effective_w or old_h ~= effective_h or last_vf_reset ~= vf_reset or (last_rotate % 180) ~= (rotate % 180) then
             last_rotate = rotate
             -- mpv doesn't allow us to change output size
             run("quit")
@@ -476,7 +453,7 @@ local function watch_changes()
             end
         end
     else
-        if old_w ~= effective_w or old_h ~= effective_h or last_vf_reset ~= vf_reset or (last_rotate % 180) ~= (rotate % 180) or par ~= last_par then
+        if old_w ~= effective_w or old_h ~= effective_h or last_vf_reset ~= vf_reset or (last_rotate % 180) ~= (rotate % 180) then
             last_rotate = rotate
             info()
         end
@@ -485,7 +462,6 @@ local function watch_changes()
 
     last_vf_reset = vf_reset
     last_rotate = rotate
-    last_par = par
 end
 
 local function sync_changes(prop, val)
