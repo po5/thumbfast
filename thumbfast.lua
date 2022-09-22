@@ -415,22 +415,6 @@ local function clear()
     )
 end
 
-local function file_load()
-    clear()
-
-    network = mp.get_property_bool("demuxer-via-network", false)
-    local image = mp.get_property_native('current-tracks/video/image', true)
-    local albumart = image and mp.get_property_native("current-tracks/video/albumart", false)
-
-    disabled = (network and not options.network) or (albumart and not options.audio) or (image and not albumart)
-    if disabled then return end
-
-    interval = math.min(math.max(mp.get_property_number("duration", 1) / options.max_thumbnails, options.interval), mp.get_property_number("duration", options.interval * options.min_thumbnails) / options.min_thumbnails)
-
-    spawned = false
-    if options.spawn_first then spawn(mp.get_property_number("time-pos", 0)) end
-end
-
 local function watch_changes()
     local old_w = effective_w
     local old_h = effective_h
@@ -476,6 +460,22 @@ local function sync_changes(prop, val)
     if spawned and val then
         run("set "..prop.." "..val)
     end
+end
+
+local function file_load()
+    clear()
+
+    network = mp.get_property_bool("demuxer-via-network", false)
+    local image = mp.get_property_native('current-tracks/video/image', true)
+    local albumart = image and mp.get_property_native("current-tracks/video/albumart", false)
+
+    disabled = (network and not options.network) or (albumart and not options.audio) or (image and not albumart)
+    if disabled then return end
+
+    interval = math.min(math.max(mp.get_property_number("duration", 1) / options.max_thumbnails, options.interval), mp.get_property_number("duration", options.interval * options.min_thumbnails) / options.min_thumbnails)
+
+    spawned = false
+    if options.spawn_first then spawn(mp.get_property_number("time-pos", 0)) end
 end
 
 mp.observe_property("video-out-params", "native", watch_changes)
