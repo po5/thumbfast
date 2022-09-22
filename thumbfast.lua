@@ -130,14 +130,6 @@ local function get_os()
     return str_os_name
 end
 
-local function is_audio_file()
-    if mp.get_property_native('current-tracks/video/image') and
-        mp.get_property_native("current-tracks/video/albumart") then
-        return true
-    end
-    return false
-end
-
 local function vf_string(filters)
     local vf = ""
     local vf_table = mp.get_property_native("vf")
@@ -474,14 +466,18 @@ mp.register_script_message("clear", clear)
 
 function file_load()
     clear()
-    spawned = false
-    can_generate = true
+
     network = mp.get_property_bool("demuxer-via-network", false)
-    disabled = (network and not options.network) or (is_audio_file() and not options.audio)
+    local image = mp.get_property_native('current-tracks/video/image', true)
+    local albumart = image and mp.get_property_native("current-tracks/video/albumart", false)
+
+    disabled = (network and not options.network) or (albumart and not options.audio) or (image and not albumart)
+    if disabled then return end
+
     interval = math.min(math.max(mp.get_property_number("duration", 1) / options.max_thumbnails, options.interval), mp.get_property_number("duration", options.interval * options.min_thumbnails) / options.min_thumbnails)
-    if options.spawn_first and not disabled then
-        spawn(mp.get_property_number("time-pos", 0))
-    end
+
+    spawned = false
+    if options.spawn_first then spawn(mp.get_property_number("time-pos", 0)) end
 end
 
 mp.register_event("file-loaded", file_load)
