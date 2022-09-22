@@ -154,11 +154,6 @@ local function vf_string(filters)
     return vf
 end
 
-local function round(number)
-	local modulus = number % 1
-	return modulus < 0.5 and math.floor(number) or math.ceil(number)
-end
-
 local function calc_dimensions()
     local width = mp.get_property_number("video-out-params/dw")
     local height = mp.get_property_number("video-out-params/dh")
