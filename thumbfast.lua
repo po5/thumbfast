@@ -218,7 +218,7 @@ local function spawn(time)
 
     if options.thumbnail == "" then
         if os_name == "Windows" then
-            options.thumbnail = mp.command_native({"expand-path", "~/AppData/Local/Temp"}).."\\thumbfast.out"
+            options.thumbnail = os.getenv("TEMP").."\\thumbfast.out"
         elseif os_name == "Mac" then
             options.thumbnail = "/tmp/thumbfast.out"
         else
