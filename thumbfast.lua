@@ -12,7 +12,7 @@ local options = {
     thumbnail = "",
 
     -- Maximum thumbnail size in pixels (scaled down to fit)
-    -- Values scaled when hidpi is enabled
+    -- Values are scaled when hidpi is enabled
     max_height = 200,
     max_width = 200,
 
@@ -134,7 +134,7 @@ local function get_os()
     return str_os_name
 end
 
-local function vf_string(filters)
+local function vf_string(filters, full)
     local vf = ""
     local vf_table = mp.get_property_native("vf")
 
@@ -151,6 +151,10 @@ local function vf_string(filters)
                 vf = vf .. vf_table[i].name .. "=" .. args .. ","
             end
         end
+    end
+
+    if full then
+        vf = vf.."scale=w="..effective_w..":h="..effective_h..par..",pad=w="..effective_w..":h="..effective_h..":x=(ow-iw)/2:y=(oh-ih)/2,format=bgra"
     end
 
     return vf
@@ -252,7 +256,7 @@ local function spawn(time)
             "--ytdl-format=worst", "--demuxer-readahead-secs=0", "--demuxer-max-bytes=128KiB",
             "--dither=no", "--vd-lavc-skiploopfilter=all", "--vd-lavc-software-fallback=1", "--vd-lavc-fast",
             "--tone-mapping="..(mp.get_property_number("tone-mapping") or "auto"), "--tone-mapping-param="..(mp.get_property_number("tone-mapping-param") or "default"), "--hdr-compute-peak=no",
-            "--vf="..vf_string(filters_all).."scale=w="..effective_w..":h="..effective_h..par..",pad=w="..effective_w..":h="..effective_h..":x=(ow-iw)/2:y=(oh-ih)/2,format=bgra",
+            "--vf="..vf_string(filters_all, true),
             "--video-rotate="..last_rotate,
             "--ovc=rawvideo", "--of=image2", "--ofopts=update=1", "--o="..options.thumbnail
         }},
@@ -448,7 +452,7 @@ local function watch_changes()
             end
             local vf_runtime = vf_string(filters_runtime)
             if vf_runtime ~= last_vf_runtime then
-                run("vf set "..vf_string(filters_all).."scale=w="..effective_w..":h="..effective_h..":force_original_aspect_ratio=decrease,pad=w="..effective_w..":h="..effective_h..":x=(ow-iw)/2:y=(oh-ih)/2,format=bgra")
+                run("vf set "..vf_string(filters_all, true))
                 last_vf_runtime = vf_runtime
             end
         end
