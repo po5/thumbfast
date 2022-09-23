@@ -48,6 +48,7 @@ local os_name = ""
 
 math.randomseed(os.time())
 local unique = math.random(10000000)
+local init = false
 
 local spawned = false
 local can_generate = true
@@ -214,8 +215,6 @@ local function spawn(time)
             options.socket = "/tmp/thumbfast"
         end
     end
-    -- ensure uniqueness
-    options.socket = options.socket .. unique
 
     if options.thumbnail == "" then
         if os_name == "Windows" then
@@ -225,6 +224,13 @@ local function spawn(time)
         else
             options.thumbnail = "/tmp/thumbfast.out"
         end
+    end
+
+    if not init then
+        -- ensure uniqueness
+        options.socket = options.socket .. unique
+        options.thumbnail = options.thumbnail .. unique
+        init = true
     end
 
     os.remove(options.thumbnail)
