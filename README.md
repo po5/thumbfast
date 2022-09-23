@@ -31,7 +31,7 @@ Hover on the timeline for nice thumbnails.
 ## Configuration
 `socket`: On Windows, a plain string. On Linux and Mac, a directory path for temporary files. Leave empty for auto.  
 `thumbnail`: Path for the temporary thumbnail file (must not be a directory). Leave empty for auto.  
-`max_height`, `max_width`: Maximum thumbnail size in pixels (scaled down to fit). Defaults to 200x200.  
+`max_height`, `max_width`: Maximum thumbnail size in pixels (scaled down to fit). Values are scaled when hidpi is enabled. Defaults to 200x200.  
 `overlay_id`: Overlay id for thumbnails. Leave blank unless you know what you're doing.  
 `interval`: Thumbnail interval in seconds, set to 0 to disable (warning: high cpu usage). Defaults to 10 seconds.  
 `min_thumbnails`, `max_thumbnails`: Number of thumbnails. Default to 1 and 120.  

@@ -12,6 +12,7 @@ local options = {
     thumbnail = "",
 
     -- Maximum thumbnail size in pixels (scaled down to fit)
+    -- Values scaled when hidpi is enabled
     max_height = 200,
     max_width = 200,
 
