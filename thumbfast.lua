@@ -470,6 +470,7 @@ local function file_load()
     local albumart = image and mp.get_property_native("current-tracks/video/albumart", false)
 
     disabled = (network and not options.network) or (albumart and not options.audio) or (image and not albumart)
+    info()
     if disabled then return end
 
     interval = math.min(math.max(mp.get_property_number("duration", 1) / options.max_thumbnails, options.interval), mp.get_property_number("duration", options.interval * options.min_thumbnails) / options.min_thumbnails)
