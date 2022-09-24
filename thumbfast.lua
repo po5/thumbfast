@@ -254,9 +254,9 @@ local function spawn(time)
             "--input-ipc-server="..options.socket,
             "--start="..time, "--hr-seek=no",
             "--ytdl-format=worst", "--demuxer-readahead-secs=0", "--demuxer-max-bytes=128KiB",
-            "--dither=no", "--vd-lavc-skiploopfilter=all", "--vd-lavc-software-fallback=1", "--vd-lavc-fast",
-            "--tone-mapping="..(mp.get_property_number("tone-mapping") or "auto"), "--tone-mapping-param="..(mp.get_property_number("tone-mapping-param") or "default"), "--hdr-compute-peak=no",
+            "--vd-lavc-skiploopfilter=all", "--vd-lavc-software-fallback=1", "--vd-lavc-fast",
             "--vf="..vf_string(filters_all, true),
+            "--sws-allow-zimg=no", "--sws-fast=yes",
             "--video-rotate="..last_rotate,
             "--ovc=rawvideo", "--of=image2", "--ofopts=update=1", "--o="..options.thumbnail
         }},
