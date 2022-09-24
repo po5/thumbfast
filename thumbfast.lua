@@ -154,10 +154,28 @@ local function vf_string(filters, full)
     end
 
     if full then
-        vf = vf.."scale=w="..effective_w..":h="..effective_h..par..",pad=w="..effective_w..":h="..effective_h..":x=(ow-iw)/2:y=(oh-ih)/2,format=bgra"
+        vf = vf.."scale=w="..effective_w..":h="..effective_h..par..",pad=w="..effective_w..":h="..effective_h..":x=-1:y=-1,format=bgra"
     end
 
     return vf
+end
+
+local function round(n)
+    return math.floor(n + 0.5)
+end
+
+local function fit(w, h, max_w, max_h, scale, step, operator)
+    scale = scale or 1
+    step = step or 2
+    operator = operator or round
+
+    local ratio = math.max(w / max_w, h / max_h) / scale
+    local exact_w = w / ratio
+    local exact_h = h / ratio
+    local stepped_w = operator(exact_w / step) * step
+    local stepped_h = operator(exact_h / step) * step
+
+    return stepped_w, stepped_h
 end
 
 local function calc_dimensions()
@@ -167,13 +185,17 @@ local function calc_dimensions()
 
     local scale = mp.get_property_number("display-hidpi-scale", 1)
 
-    if width / height > options.max_width / options.max_height then
-        effective_w = math.floor(options.max_width * scale + 0.5)
-        effective_h = math.floor(height / width * effective_w + 0.5)
-    else
-        effective_h = math.floor(options.max_height * scale + 0.5)
-        effective_w = math.floor(width / height * effective_h + 0.5)
-    end
+    -- exact scale size
+    local pass1_w, pass1_h = fit(width, height, options.max_width, options.max_height, scale, 1e-6)
+    -- expected scale size
+    -- ceil to align long edges, floor to align short edges
+    local pass2_w, pass2_h = fit(width, height, pass1_w, pass1_h, nil, nil, math.ceil)
+    -- estimated scale size
+    local pass3_w, pass3_h = fit(width, height, pass1_w, pass1_h, nil, 1)
+    local diff_w = pass2_w - pass3_w
+
+    effective_w = diff_w ~=0 and pass2_w - 2 or pass2_w
+    effective_h = pass2_h
 
     thumb_size = effective_w * effective_h * 4
 
