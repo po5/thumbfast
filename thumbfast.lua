@@ -69,7 +69,8 @@ local last_display_time = 0
 
 local effective_w = options.max_width
 local effective_h = options.max_height
-local thumb_size = effective_w * effective_h * 4
+local real_w = nil
+local real_h = nil
 
 local filters_reset = {["lavfi-crop"]=true, crop=true}
 local filters_runtime = {hflip=true, vflip=true}
@@ -175,8 +176,6 @@ local function calc_dimensions()
         effective_w = math.floor(width / height * effective_h + 0.5)
     end
 
-    thumb_size = effective_w * effective_h * 4
-
     local v_par = mp.get_property_number("video-out-params/par", 1)
     if v_par == 1 then
         par = ":force_original_aspect_ratio=decrease"
@@ -185,8 +184,8 @@ local function calc_dimensions()
     end
 end
 
-local function info()
-    local display_w, display_h = effective_w, effective_h
+local function info(w, h)
+    local display_w, display_h = w, h
     if mp.get_property_number("video-params/rotate", 0) % 180 == 90 then
         display_w, display_h = effective_h, effective_w
     end
@@ -247,10 +246,6 @@ local function spawn(time)
 
     remove_thumbnail_files()
 
-    calc_dimensions()
-
-    info()
-
     mp.command_native_async(
         {name = "subprocess", playback_only = true, args = {
             "mpv", path, "--no-config", "--msg-level=all=no", "--idle", "--pause", "--keep-open=always",
@@ -302,10 +297,35 @@ local function index_time(index, thumbtime)
     end
 end
 
+local function real_res(req_w, req_h, filesize)
+    local count = filesize / 4
+    local diff = (req_w * req_h) - count
+
+    if diff == 0 then
+        return req_w, req_h
+    else
+        local threshold = 5 -- throw out results that change too much
+        local long_side, short_side = req_w, req_h
+        if req_h > req_w then
+            long_side, short_side = req_h, req_w
+        end
+        for a = short_side, short_side - threshold, -1 do
+            if count % a == 0 then
+                local b = count / a
+                if long_side - b < threshold then
+                    if req_h < req_w then return b, a else return a, b end
+                end
+            end
+        end
+        return nil
+    end
+end
+
 local function draw(w, h, thumbtime, display_time, script)
-    local display_w, display_h = w, h
+    if not real_w then return end
+    local display_w, display_h = real_w, real_h
     if mp.get_property_number("video-params/rotate", 0) % 180 == 90 then
-        display_w, display_h = h, w
+        display_w, display_h = real_h, real_w
     end
 
     if x ~= nil then
@@ -324,8 +344,8 @@ local function display_img(w, h, thumbtime, display_time, script, redraw)
     if not redraw then
         can_generate = false
 
-        local info = mp.utils.file_info(options.thumbnail)
-        if not info or info.size ~= thumb_size then
+        local finfo = mp.utils.file_info(options.thumbnail)
+        if not finfo then
             if thumbtime == -1 then
                 can_generate = true
                 return
@@ -336,10 +356,7 @@ local function display_img(w, h, thumbtime, display_time, script, redraw)
             end
 
             -- display last successful thumbnail if one exists
-            local info2 = mp.utils.file_info(options.thumbnail..".bgra")
-            if info2 and info2.size == thumb_size then
-                draw(w, h, thumbtime, display_time, script)
-            end
+            draw(w, h, thumbtime, display_time, script)
 
             -- retry up to 5 times
             return mp.add_timeout(0.05, function() display_img(w, h, thumbtime < 0 and thumbtime or -5, display_time, script) end)
@@ -354,10 +371,13 @@ local function display_img(w, h, thumbtime, display_time, script, redraw)
         -- move the file because it can get overwritten while overlay-add is reading it, and crash the player
         os.rename(options.thumbnail, options.thumbnail..".bgra")
 
+        real_w, real_h = real_res(w, h, finfo.size)
+        if real_w then info(real_w, real_h) end
+
         last_display_time = display_time
     else
         local info = mp.utils.file_info(options.thumbnail..".bgra")
-        if not info or info.size ~= thumb_size then
+        if not info then
             -- still waiting on intial thumbnail
             return mp.add_timeout(0.05, function() display_img(w, h, thumbtime, display_time, script) end)
         end
@@ -447,7 +467,7 @@ local function watch_changes()
             -- mpv doesn't allow us to change output size
             run("quit")
             clear()
-            info()
+            info(effective_w, effective_h)
             spawned = false
             spawn(last_request or mp.get_property_number("time-pos", 0))
         else
@@ -463,7 +483,7 @@ local function watch_changes()
     else
         if old_w ~= effective_w or old_h ~= effective_h or last_vf_reset ~= vf_reset or (last_rotate % 180) ~= (rotate % 180) or par ~= last_par then
             last_rotate = rotate
-            info()
+            info(effective_w, effective_h)
         end
         last_vf_runtime = vf_string(filters_runtime)
     end
@@ -487,7 +507,8 @@ local function file_load()
     local albumart = image and mp.get_property_native("current-tracks/video/albumart", false)
 
     disabled = (network and not options.network) or (albumart and not options.audio) or (image and not albumart)
-    info()
+    calc_dimensions()
+    info(effective_w, effective_h)
     if disabled then return end
 
     interval = math.min(math.max(mp.get_property_number("duration", 1) / options.max_thumbnails, options.interval), mp.get_property_number("duration", options.interval * options.min_thumbnails) / options.min_thumbnails)
