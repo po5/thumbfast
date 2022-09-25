@@ -195,6 +195,11 @@ local function info()
     mp.commandv("script-message", "thumbfast-info", json)
 end
 
+local function remove_thumbnail_files()
+    os.remove(options.thumbnail)
+    os.remove(options.thumbnail..".bgra")
+end
+
 local function spawn(time)
     if disabled then return end
 
@@ -240,8 +245,7 @@ local function spawn(time)
         init = true
     end
 
-    os.remove(options.thumbnail)
-    os.remove(options.thumbnail..".bgra")
+    remove_thumbnail_files()
 
     calc_dimensions()
 
@@ -492,6 +496,12 @@ local function file_load()
     if options.spawn_first then spawn(mp.get_property_number("time-pos", 0)) end
 end
 
+local function shutdown()
+    run("quit")
+    remove_thumbnail_files()
+    os.remove(options.socket)
+end
+
 mp.observe_property("display-hidpi-scale", "native", watch_changes)
 mp.observe_property("video-out-params", "native", watch_changes)
 mp.observe_property("vf", "native", watch_changes)
@@ -502,3 +512,4 @@ mp.register_script_message("thumb", thumb)
 mp.register_script_message("clear", clear)
 
 mp.register_event("file-loaded", file_load)
+mp.register_event("shutdown", shutdown)
