@@ -154,7 +154,7 @@ local function vf_string(filters, full)
     end
 
     if full then
-        vf = vf.."scale=w="..effective_w..":h="..effective_h..par..",pad=w="..effective_w..":h="..effective_h..":x=(ow-iw)/2:y=(oh-ih)/2,format=bgra"
+        vf = vf.."scale=w="..effective_w..":h="..effective_h..par..",pad=w="..effective_w..":h="..effective_h..":x=-1:y=-1,format=bgra"
     end
 
     return vf
