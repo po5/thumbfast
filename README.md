@@ -44,21 +44,21 @@ Declare the thumbfast state variable near the top of your script.
 *Do not manually modify those values, they are automatically updated by the script and changes will be overwritten.*
 ```lua
 local thumbfast = {
-	width = 0,
-	height = 0,
-	disabled = false
+    width = 0,
+    height = 0,
+    disabled = false
 }
 ```
 Register the state setter near the end of your script, or near where your other script messages are.  
 You are expected to have required `mp.utils` (for this example, into a `utils` variable).
 ```lua
 mp.register_script_message("thumbfast-info", function(json)
-	local data = utils.parse_json(json)
-	if type(data) ~= "table" or not data.width or not data.height then
-		msg.error("thumbfast-info: received json didn't produce a table with thumbnail information")
-	else
-		thumbfast = data
-	end
+    local data = utils.parse_json(json)
+    if type(data) ~= "table" or not data.width or not data.height then
+        msg.error("thumbfast-info: received json didn't produce a table with thumbnail information")
+    else
+        thumbfast = data
+    end
 end)
 ```
 Now for the actual functionality. You are in charge of supplying the time hovered (in seconds), and x/y coordinates for the top-left corner of the thumbnail.  
@@ -73,14 +73,14 @@ This code should be run when the user hovers on the seekbar. Don't worry even if
 -- hovered_seconds = video_duration * cursor_x / display_width
 
 if not thumbfast.disabled and thumbfast.width ~= 0 and thumbfast.height ~= 0 then
-	mp.commandv("script-message-to", "thumbfast", "thumb",
-		-- hovered time in seconds
-		hovered_seconds,
-		-- x
-		math.min(display_width - thumbfast.width - margin_right, math.max(margin_left, cursor_x - thumbfast.width / 2)),
-		-- y
-		cursor_y - 10 - thumbfast.height
-	)
+    mp.commandv("script-message-to", "thumbfast", "thumb",
+        -- hovered time in seconds
+        hovered_seconds,
+        -- x
+        math.min(display_width - thumbfast.width - margin_right, math.max(margin_left, cursor_x - thumbfast.width / 2)),
+        -- y
+        cursor_y - 10 - thumbfast.height
+    )
 end
 ```
 This code should be run when the user leaves the seekbar.
