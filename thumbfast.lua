@@ -34,7 +34,10 @@ local options = {
     network = false,
 
     -- Enable on audio playback
-    audio = false
+    audio = false,
+
+    -- Windows only: don't use subprocess to communicate with socket
+    use_lua_io = false
 }
 
 mp.utils = require "mp.utils"
@@ -43,6 +46,41 @@ mp.options.read_options(options, "thumbfast")
 
 if options.min_thumbnails < 1 then
     options.min_thumbnails = 1
+end
+
+local winapi = {}
+if options.use_lua_io then
+    local ffi_loaded, ffi = pcall(require, "ffi")
+    if ffi_loaded then
+        winapi = {
+            ffi = ffi,
+            C = ffi.C,
+            bit = require("bit"),
+
+            -- WinAPI constants
+            GENERIC_WRITE = 0x40000000,
+            OPEN_EXISTING = 3,
+            FILE_FLAG_WRITE_THROUGH = 0x80000000,
+            FILE_FLAG_NO_BUFFERING = 0x20000000,
+            PIPE_NOWAIT = ffi.new("unsigned long[1]", 0x00000001),
+
+            INVALID_HANDLE_VALUE = ffi.cast("void*", -1),
+
+            -- don't care about how many bytes WriteFile wrote, so allocate something to store the result once
+            _lpNumberOfBytesWritten = ffi.new("unsigned long[1]"),
+        }
+		-- cache flags used in run() to avoid bor() call
+        winapi._createfile_pipe_flags = winapi.bit.bor(winapi.FILE_FLAG_WRITE_THROUGH, winapi.FILE_FLAG_NO_BUFFERING)
+
+        ffi.cdef[[
+            void* __stdcall CreateFileA(const char *lpFileName, unsigned long dwDesiredAccess, unsigned long dwShareMode, void *lpSecurityAttributes, unsigned long dwCreationDisposition, unsigned long dwFlagsAndAttributes, void *hTemplateFile);
+            bool __stdcall WriteFile(void *hFile, const void *lpBuffer, unsigned long nNumberOfBytesToWrite, unsigned long *lpNumberOfBytesWritten, void *lpOverlapped);
+            bool __stdcall CloseHandle(void *hObject);
+            bool __stdcall SetNamedPipeHandleState(void *hNamedPipe, unsigned long *lpMode, unsigned long *lpMaxCollectionCount, unsigned long *lpCollectDataTimeout);
+        ]]
+    else
+        options.use_lua_io = false
+    end
 end
 
 local os_name = ""
@@ -269,6 +307,22 @@ end
 
 local function run(command, callback)
     if not spawned then return end
+
+    if options.use_lua_io and os_name == "Windows" then
+        local hPipe = winapi.C.CreateFileA("\\\\.\\pipe\\" .. options.socket, winapi.GENERIC_WRITE, 0, nil, winapi.OPEN_EXISTING, winapi._createfile_pipe_flags, nil)
+        if hPipe ~= winapi.INVALID_HANDLE_VALUE then
+            local buf = command .. "\n"
+            winapi.C.SetNamedPipeHandleState(hPipe, winapi.PIPE_NOWAIT, nil, nil)
+            winapi.C.WriteFile(hPipe, buf, #buf + 1, winapi._lpNumberOfBytesWritten, nil)
+            winapi.C.CloseHandle(hPipe)
+        end
+
+        if callback then
+            mp.add_timeout(0, callback)
+        end
+
+        return
+    end
 
     callback = callback or function() end
 
