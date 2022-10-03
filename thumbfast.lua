@@ -274,17 +274,19 @@ local function run(command, callback)
     callback = callback or function() end
 
     local seek_command
+    local stdin = nil
     if os_name == "Windows" then
         seek_command = {"cmd", "/c", "echo "..command.." > \\\\.\\pipe\\" .. options.socket}
     elseif os_name == "Mac" then
         -- this doesn't work, on my system. not sure why.
         seek_command = {"/usr/bin/env", "sh", "-c", "echo '"..command.."' | nc -w0 -U " .. options.socket}
     else
-        seek_command = {"/usr/bin/env", "sh", "-c", "echo '" .. command .. "' | socat - " .. options.socket}
+        stdin = command .. "\n"
+        seek_command = {"socat", "-", options.socket}
     end
 
     mp.command_native_async(
-        {name = "subprocess", playback_only = true, capture_stdout = true, args = seek_command},
+        {name = "subprocess", playback_only = true, capture_stdout = true, args = seek_command, stdin_data = stdin},
         callback
     )
 end
