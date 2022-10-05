@@ -267,19 +267,30 @@ local function spawn(time)
     )
 end
 
+local function escape_command(command)
+    if os_name == "Windows" then
+        -- https://ss64.com/nt/syntax-esc.html
+        return command:gsub("[&\\<>^|]", "^%0")
+    else
+        return "'" .. command:gsub("'", "'\\''") .. "'"
+    end
+end
+
 local function run(command, callback)
     if not spawned then return end
 
     callback = callback or function() end
+
+    command = escape_command(command)
 
     local seek_command
     if os_name == "Windows" then
         seek_command = {"cmd", "/c", "echo "..command.." > \\\\.\\pipe\\" .. options.socket}
     elseif os_name == "Mac" then
         -- this doesn't work, on my system. not sure why.
-        seek_command = {"/usr/bin/env", "HISTSIZE=0", "sh", "-o", "nolog", "-c", "echo '"..command.."' | nc -w0 -U " .. options.socket}
+        seek_command = {"/usr/bin/env", "HISTSIZE=0", "sh", "-o", "nolog", "-c", "echo " .. command .. " | nc -w0 -U " .. options.socket}
     else
-        seek_command = {"/usr/bin/env", "HISTSIZE=0", "sh", "-o", "nolog", "-c", "echo '" .. command .. "' | socat - " .. options.socket}
+        seek_command = {"/usr/bin/env", "HISTSIZE=0", "sh", "-o", "nolog", "-c", "echo " .. command .. " | socat - " .. options.socket}
     end
 
     mp.command_native_async(
