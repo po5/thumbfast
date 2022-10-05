@@ -277,9 +277,9 @@ local function run(command, callback)
         seek_command = {"cmd", "/c", "echo "..command.." > \\\\.\\pipe\\" .. options.socket}
     elseif os_name == "Mac" then
         -- this doesn't work, on my system. not sure why.
-        seek_command = {"/usr/bin/env", "sh", "-c", "echo '"..command.."' | nc -w0 -U " .. options.socket}
+        seek_command = {"/usr/bin/env", "HISTSIZE=0", "sh", "-o", "nolog", "-c", "echo '"..command.."' | nc -w0 -U " .. options.socket}
     else
-        seek_command = {"/usr/bin/env", "sh", "-c", "echo '" .. command .. "' | socat - " .. options.socket}
+        seek_command = {"/usr/bin/env", "HISTSIZE=0", "sh", "-o", "nolog", "-c", "echo '" .. command .. "' | socat - " .. options.socket}
     end
 
     mp.command_native_async(
