@@ -148,6 +148,25 @@ local file_timer = nil
 local file_check_period = 1/60
 local first_file = false
 
+local function debounce(func, wait)
+    func = type(func) == "function" and func or function() end
+    wait = type(wait) == "number" and wait / 1000 or 0
+
+    local timer = nil
+    local timer_end = function ()
+        timer:kill()
+        timer = nil
+        func()
+    end
+
+    return function ()
+        if timer then
+            timer:kill()
+        end
+        timer = mp.add_timeout(wait, timer_end)
+    end
+end
+
 local client_script = [=[
 #!/bin/bash
 MPV_IPC_FD=0; MPV_IPC_PATH="%s"
@@ -595,6 +614,8 @@ local function watch_changes()
     last_par = par
 end
 
+local watch_changes_debounce = debounce(watch_changes, 500)
+
 local function sync_changes(prop, val)
     if not spawned or val == nil then return end
 
@@ -603,7 +624,7 @@ local function sync_changes(prop, val)
     end
 
     run("set "..prop.." "..val)
-    watch_changes()
+    watch_changes_debounce()
 end
 
 local function file_load()
@@ -633,7 +654,7 @@ end
 
 mp.observe_property("display-hidpi-scale", "native", watch_changes)
 mp.observe_property("video-out-params", "native", watch_changes)
-mp.observe_property("vf", "native", watch_changes)
+mp.observe_property("vf", "native", watch_changes_debounce)
 mp.observe_property("vid", "native", sync_changes)
 mp.observe_property("edition", "native", sync_changes)
 
