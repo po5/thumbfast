@@ -596,9 +596,14 @@ local function watch_changes()
 end
 
 local function sync_changes(prop, val)
-    if spawned and val then
-        run("set "..prop.." "..val)
+    if not spawned or val == nil then return end
+
+    if type(val) == "boolean" then
+        val = val and "yes" or "no"
     end
+
+    run("set "..prop.." "..val)
+    watch_changes()
 end
 
 local function file_load()
