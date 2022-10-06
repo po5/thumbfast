@@ -298,6 +298,14 @@ local function info(w, h)
         display_w, display_h = h, w
     end
 
+    network = mp.get_property_bool("demuxer-via-network", false)
+    local image = mp.get_property_native("current-tracks/video/image", false)
+    local albumart = image and mp.get_property_native("current-tracks/video/albumart", false)
+    disabled = not (w and h) or
+        (network and not options.network) or
+        (albumart and not options.audio) or
+        (image and not albumart)
+
     local json, err = mp.utils.format_json({width=display_w, height=display_h, disabled=disabled, socket=options.socket, thumbnail=options.thumbnail, overlay_id=options.overlay_id})
     mp.commandv("script-message", "thumbfast-info", json)
 end
@@ -598,11 +606,6 @@ local function file_load()
     real_w, real_h = nil, nil
     last_seek_time = nil
 
-    network = mp.get_property_bool("demuxer-via-network", false)
-    local image = mp.get_property_native("current-tracks/video/image", false)
-    local albumart = image and mp.get_property_native("current-tracks/video/albumart", false)
-
-    disabled = (network and not options.network) or (albumart and not options.audio) or (image and not albumart)
     calc_dimensions()
     info(effective_w, effective_h)
     if disabled then return end
