@@ -350,6 +350,25 @@ local function move_file(from, to)
     os.rename(from, to)
 end
 
+local last_seek = 0
+local function seek()
+    if last_seek_time then
+        last_seek = mp.get_time()
+        run("async seek " .. last_seek_time .. " absolute+keyframes")
+    end
+end
+
+local seek_period = 0.1
+local seek_timer = mp.add_timeout(seek_period, seek)
+seek_timer:kill()
+local function request_seek()
+    if seek_timer:is_enabled() then return end
+    local next_seek = seek_period - (mp.get_time() - last_seek)
+    if next_seek <= 0 then seek() return end
+    seek_timer.timeout = next_seek
+    seek_timer:resume()
+end
+
 local function check_new_thumb()
     local finfo = mp.utils.file_info(options.thumbnail)
     if not finfo then return false end
@@ -361,7 +380,7 @@ local function check_new_thumb()
     local tmp = options.thumbnail..".tmp"
     move_file(options.thumbnail, tmp)
     if first_file then
-        run("async seek "..last_seek_time.." absolute+keyframes")
+        request_seek()
         first_file = false
     end
     finfo = mp.utils.file_info(tmp)
@@ -410,12 +429,14 @@ local function thumb(time, r_x, r_y, script)
     if seek_time == last_seek_time then return end
     last_seek_time = seek_time
     if not spawned then spawn(seek_time) end
-    run("async seek "..seek_time.." absolute+keyframes")
+    request_seek()
     if not file_timer:is_enabled() then file_timer:resume() end
 end
 
 local function clear()
     file_timer:kill()
+    seek_timer:kill()
+    last_seek = 0
     show_thumbnail = false
     last_x = nil
     last_y = nil
