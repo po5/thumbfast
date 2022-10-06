@@ -550,13 +550,22 @@ local function watch_changes()
     local vf_reset = vf_string(filters_reset)
     local rotate = mp.get_property_number("video-rotate", 0)
 
+    local resized = old_w ~= effective_w or
+        old_h ~= effective_h or
+        last_vf_reset ~= vf_reset or
+        (last_rotate % 180) ~= (rotate % 180) or
+        par ~= last_par
+
+    if resized then
+        last_rotate = rotate
+        info(effective_w, effective_h)
+    end
+
     if spawned then
-        if old_w ~= effective_w or old_h ~= effective_h or last_vf_reset ~= vf_reset or (last_rotate % 180) ~= (rotate % 180) or par ~= last_par then
-            last_rotate = rotate
+        if resized then
             -- mpv doesn't allow us to change output size
             run("quit")
             clear()
-            info(effective_w, effective_h)
             spawned = false
             spawn(last_seek_time or mp.get_property_number("time-pos", 0))
         else
@@ -570,10 +579,6 @@ local function watch_changes()
             end
         end
     else
-        if old_w ~= effective_w or old_h ~= effective_h or last_vf_reset ~= vf_reset or (last_rotate % 180) ~= (rotate % 180) or par ~= last_par then
-            last_rotate = rotate
-            info(effective_w, effective_h)
-        end
         last_vf_runtime = vf_string(filters_runtime)
     end
 
