@@ -33,11 +33,6 @@ mp.utils = require "mp.utils"
 mp.options = require "mp.options"
 mp.options.read_options(options, "thumbfast")
 
-local os_name = ""
-
-math.randomseed(os.time())
-local unique = math.random(10000000)
-local init = false
 
 local spawned = false
 local network = false
@@ -126,6 +121,44 @@ local function get_os()
     return str_os_name
 end
 
+local os_name = get_os()
+
+if options.socket == "" then
+    if os_name == "Windows" then
+        options.socket = "thumbfast"
+    elseif os_name == "Mac" then
+        options.socket = "/tmp/thumbfast"
+    else
+        options.socket = "/tmp/thumbfast"
+    end
+end
+
+if options.thumbnail == "" then
+    if os_name == "Windows" then
+        options.thumbnail = os.getenv("TEMP").."\\thumbfast.out"
+    elseif os_name == "Mac" then
+        options.thumbnail = "/tmp/thumbfast.out"
+    else
+        options.thumbnail = "/tmp/thumbfast.out"
+    end
+end
+
+if options.seek == "" then
+    if os_name == "Windows" then
+        options.seek = os.getenv("TEMP").."\\thumbfast.seek"
+    elseif os_name == "Mac" then
+        options.seek = "/tmp/thumbfast.seek"
+    else
+        options.seek = "/tmp/thumbfast.seek"
+    end
+end
+
+math.randomseed(os.time())
+local unique = math.random(10000000)
+
+options.socket = options.socket .. unique
+options.thumbnail = options.thumbnail .. unique
+
 local function vf_string(filters, full)
     local vf = ""
     local vf_table = mp.get_property_native("vf")
@@ -202,37 +235,6 @@ local function spawn(time)
     local ytdl = open_filename and network and path ~= open_filename
     if ytdl then
         path = open_filename
-    end
-
-    if os_name == "" then
-        os_name = get_os()
-    end
-
-    if options.socket == "" then
-        if os_name == "Windows" then
-            options.socket = "thumbfast"
-        elseif os_name == "Mac" then
-            options.socket = "/tmp/thumbfast"
-        else
-            options.socket = "/tmp/thumbfast"
-        end
-    end
-
-    if options.thumbnail == "" then
-        if os_name == "Windows" then
-            options.thumbnail = os.getenv("TEMP").."\\thumbfast.out"
-        elseif os_name == "Mac" then
-            options.thumbnail = "/tmp/thumbfast.out"
-        else
-            options.thumbnail = "/tmp/thumbfast.out"
-        end
-    end
-
-    if not init then
-        -- ensure uniqueness
-        options.socket = options.socket .. unique
-        options.thumbnail = options.thumbnail .. unique
-        init = true
     end
 
     remove_thumbnail_files()
