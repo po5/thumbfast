@@ -74,11 +74,6 @@ if options.use_lua_io then
     end
 end
 
-local os_name = ""
-
-local unique = mp.get_property_native("pid")
-local init = false
-
 local spawned = false
 local network = false
 local disabled = false
@@ -171,6 +166,29 @@ local function get_os()
     return str_os_name
 end
 
+local os_name = get_os()
+
+if options.socket == "" then
+    if os_name == "Windows" then
+        options.socket = "thumbfast"
+    else
+        options.socket = "/tmp/thumbfast"
+    end
+end
+
+if options.thumbnail == "" then
+    if os_name == "Windows" then
+        options.thumbnail = os.getenv("TEMP").."\\thumbfast.out"
+    else
+        options.thumbnail = "/tmp/thumbfast.out"
+    end
+end
+
+local unique = mp.get_property_native("pid")
+
+options.socket = options.socket .. unique
+options.thumbnail = options.thumbnail .. unique
+
 local function vf_string(filters, full)
     local vf = ""
     local vf_table = mp.get_property_native("vf")
@@ -245,33 +263,6 @@ local function spawn(time)
     local ytdl = open_filename and network and path ~= open_filename
     if ytdl then
         path = open_filename
-    end
-
-    if os_name == "" then
-        os_name = get_os()
-    end
-
-    if options.socket == "" then
-        if os_name == "Windows" then
-            options.socket = "thumbfast"
-        else
-            options.socket = "/tmp/thumbfast"
-        end
-    end
-
-    if options.thumbnail == "" then
-        if os_name == "Windows" then
-            options.thumbnail = os.getenv("TEMP").."\\thumbfast.out"
-        else
-            options.thumbnail = "/tmp/thumbfast.out"
-        end
-    end
-
-    if not init then
-        -- ensure uniqueness
-        options.socket = options.socket .. unique
-        options.thumbnail = options.thumbnail .. unique
-        init = true
     end
 
     remove_thumbnail_files()
