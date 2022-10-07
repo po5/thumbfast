@@ -4,12 +4,67 @@
 --
 -- Built for easy integration in third-party UIs.
 
+local sub_name = "thumbfast_sub"
+-- if subprocess
+if mp.get_property_native("title") == sub_name then
+    local options = {seek = "/tmp/thumbfast.seek", period = 0.1}
+    mp.options = require "mp.options"
+    mp.options.read_options(options, sub_name)
+
+    local time = nil
+    local function seek(exact)
+        if not time then return end
+        mp.commandv("seek", time, exact and "absolute+exact" or "absolute+keyframes")
+    end
+
+    local seek_file_tmp = options.seek .. ".tmp"
+    local timer = nil
+    local missed = false
+    local function check_seek()
+        os.rename(options.seek, seek_file_tmp)
+        local file = io.open(seek_file_tmp, "r")
+        if file then
+            -- read as string, because the seek command needs strings
+            local requested_time = tostring(file:read("*n"))
+            if time ~= requested_time then
+                time = requested_time
+                time = requested_time
+                seek()
+            else
+                seek(true)
+            end
+            file:close()
+            os.remove(seek_file_tmp)
+            missed = false
+        else
+            if not missed then
+                seek(true)
+                missed = true
+            else
+                timer:kill()
+            end
+        end
+    end
+    timer = mp.add_periodic_timer(options.period, check_seek)
+    timer:kill()
+
+    --signal to start checking for seek requests
+    mp.observe_property("title", "native", function(_, _)
+        check_seek()
+        timer:resume()
+    end)
+    return
+end
+
 local options = {
     -- Socket path (leave empty for auto)
     socket = "",
 
     -- Thumbnail path (leave empty for auto)
     thumbnail = "",
+
+    -- Seek file path (leave empty for auto)
+    seek = "",
 
     -- Maximum thumbnail size in pixels (scaled down to fit)
     -- Values are scaled when hidpi is enabled
@@ -33,6 +88,7 @@ mp.utils = require "mp.utils"
 mp.options = require "mp.options"
 mp.options.read_options(options, "thumbfast")
 
+local script_path = debug.getinfo(1, 'S').source:sub(2)
 
 local spawned = false
 local network = false
@@ -70,6 +126,8 @@ local last_par = ""
 local file_timer = nil
 local file_check_period = 1/60
 local first_file = false
+
+local seek_period = 3/60
 
 local function get_os()
     local raw_os_name = ""
@@ -158,6 +216,7 @@ local unique = math.random(10000000)
 
 options.socket = options.socket .. unique
 options.thumbnail = options.thumbnail .. unique
+options.seek = options.seek .. unique
 
 local function vf_string(filters, full)
     local vf = ""
@@ -250,7 +309,9 @@ local function spawn(time)
             "--vf="..vf_string(filters_all, true),
             "--sws-allow-zimg=no", "--sws-fast=yes", "--sws-scaler=fast-bilinear",
             "--video-rotate="..last_rotate,
-            "--ovc=rawvideo", "--of=image2", "--ofopts=update=1", "--o="..options.thumbnail
+            "--ovc=rawvideo", "--of=image2", "--ofopts=update=1", "--o="..options.thumbnail,
+            "--title=" .. sub_name, "--script=" .. script_path,
+            "--script-opts=" .. sub_name .. "-seek=" .. options.seek .. "," .. sub_name .. "-period=" .. seek_period,
         }},
         function() end
     )
@@ -327,22 +388,20 @@ local function move_file(from, to)
 end
 
 local last_seek = 0
-local function seek()
+local function seek(seek_time)
     if last_seek_time then
-        last_seek = mp.get_time()
-        run("async seek " .. last_seek_time .. " absolute+keyframes")
+        local file = io.open(options.seek, 'w')
+        if file then
+            file:write(seek_time)
+            file:close()
+            local now = mp.get_time()
+            if now - last_seek > seek_period then
+                -- signal to check file
+                run('set title ' .. now)
+            end
+            last_seek = now
+        end
     end
-end
-
-local seek_period = 0.1
-local seek_timer = mp.add_timeout(seek_period, seek)
-seek_timer:kill()
-local function request_seek()
-    if seek_timer:is_enabled() then return end
-    local next_seek = seek_period - (mp.get_time() - last_seek)
-    if next_seek <= 0 then seek() return end
-    seek_timer.timeout = next_seek
-    seek_timer:resume()
 end
 
 local function check_new_thumb()
@@ -355,7 +414,7 @@ local function check_new_thumb()
     local finfo = mp.utils.file_info(tmp)
     if not finfo then return false end
     if first_file then
-        request_seek()
+        seek(last_seek_time)
         first_file = false
     end
     local w, h = real_res(effective_w, effective_h, finfo.size)
@@ -399,13 +458,12 @@ local function thumb(time, r_x, r_y, script)
     if time == last_seek_time then return end
     last_seek_time = time
     if not spawned then spawn(time) end
-    request_seek()
+    seek(time)
     if not file_timer:is_enabled() then file_timer:resume() end
 end
 
 local function clear()
     file_timer:kill()
-    seek_timer:kill()
     last_seek = 0
     show_thumbnail = false
     last_x = nil
@@ -487,6 +545,7 @@ local function shutdown()
     run("quit")
     remove_thumbnail_files()
     os.remove(options.socket)
+    os.remove(options.seek)
 end
 
 mp.observe_property("display-hidpi-scale", "native", watch_changes)
