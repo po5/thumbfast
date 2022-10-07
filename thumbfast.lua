@@ -409,21 +409,18 @@ local function request_seek()
 end
 
 local function check_new_thumb()
-    local finfo = mp.utils.file_info(options.thumbnail)
-    if not finfo then return false end
-
     -- the slave might start writing to the file after checking existance and
     -- validity but before actually moving the file, so move to a temporary
     -- location before validity check to make sure everything stays consistant
     -- and valid thumbnails don't get overwritten by invalid ones
     local tmp = options.thumbnail..".tmp"
     move_file(options.thumbnail, tmp)
+    local finfo = mp.utils.file_info(tmp)
+    if not finfo then return false end
     if first_file then
         request_seek()
         first_file = false
     end
-    finfo = mp.utils.file_info(tmp)
-    if not finfo then return false end
     local w, h = real_res(effective_w, effective_h, finfo.size)
     if w then -- only accept valid thumbnails
         move_file(tmp, options.thumbnail..".bgra")
