@@ -19,14 +19,6 @@ local options = {
     -- Overlay id
     overlay_id = 42,
 
-    -- Thumbnail interval in seconds, set to 0 to disable (warning: high cpu usage)
-    -- Clamped to min_thumbnails and max_thumbnails
-    interval = 6,
-
-    -- Number of thumbnails
-    min_thumbnails = 6,
-    max_thumbnails = 120,
-
     -- Spawn thumbnailer on file load for faster initial thumbnails
     spawn_first = false,
 
@@ -41,10 +33,6 @@ mp.utils = require "mp.utils"
 mp.options = require "mp.options"
 mp.options.read_options(options, "thumbfast")
 
-if options.min_thumbnails < 1 then
-    options.min_thumbnails = 1
-end
-
 local os_name = ""
 
 math.randomseed(os.time())
@@ -54,7 +42,6 @@ local init = false
 local spawned = false
 local network = false
 local disabled = false
-local interval = 0
 
 local x = nil
 local y = nil
@@ -288,19 +275,6 @@ local function run(command, callback)
     )
 end
 
-local function thumb_index(thumbtime)
-    return math.floor(thumbtime / interval)
-end
-
-local function index_time(index, thumbtime)
-    if interval > 0 then
-        local time = index * interval
-        return time + interval / 3
-    else
-        return thumbtime
-    end
-end
-
 local function draw(w, h, script)
     if not w or not show_thumbnail then return end
     local display_w, display_h = w, h
@@ -415,20 +389,17 @@ local function thumb(time, r_x, r_y, script)
         x, y = math.floor(r_x + 0.5), math.floor(r_y + 0.5)
     end
 
-    local index = thumb_index(time)
-    local seek_time = index_time(index, time)
-
     script_name = script
-    if last_x ~= x or last_y ~= y or seek_time ~= last_seek_time or not show_thumbnail then
+    if last_x ~= x or last_y ~= y or not show_thumbnail then
         show_thumbnail = true
         last_x = x
         last_y = y
         draw(real_w, real_h, script)
     end
 
-    if seek_time == last_seek_time then return end
-    last_seek_time = seek_time
-    if not spawned then spawn(seek_time) end
+    if time == last_seek_time then return end
+    last_seek_time = time
+    if not spawned then spawn(time) end
     request_seek()
     if not file_timer:is_enabled() then file_timer:resume() end
 end
@@ -505,8 +476,6 @@ local function file_load()
     calc_dimensions()
     info(effective_w, effective_h)
     if disabled then return end
-
-    interval = math.min(math.max(mp.get_property_number("duration", 1) / options.max_thumbnails, options.interval), mp.get_property_number("duration", options.interval * options.min_thumbnails) / options.min_thumbnails)
 
     spawned = false
     if options.spawn_first then
