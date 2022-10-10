@@ -20,7 +20,7 @@ Supports web videos e.g. YouTube (disabled by default), mixed aspect ratio video
 ## Requirements
 Windows: None, works out of the box
 
-Linux: socat, already installed on most systems
+Linux: None, works out of the box
 
 Mac: None, works out of the box
 

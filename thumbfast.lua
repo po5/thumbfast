@@ -47,8 +47,7 @@ end
 
 local os_name = ""
 
-math.randomseed(os.time())
-local unique = math.random(10000000)
+local unique = mp.get_property_native('pid')
 local init = false
 
 local spawned = false
@@ -89,6 +88,12 @@ local file_timer = nil
 local file_check_period = 1/60
 local first_file = false
 
+local client_script = '#!/bin/bash\n'..
+'MPV_IPC_FD=0; MPV_IPC_PATH="%s"\n'..
+'trap "kill 0" EXIT\n'..
+'while [[ $# -ne 0 ]]; do case $1 in --mpv-ipc-fd=*) MPV_IPC_FD=${1/--mpv-ipc-fd=/} ;; esac; shift; done\n'..
+'if echo "print-text test" >&"$MPV_IPC_FD"; then echo -n > "$MPV_IPC_PATH"; tail --follow=name "$MPV_IPC_PATH" >&"$MPV_IPC_FD" & while read -r -u "$MPV_IPC_FD"; do :; done; fi'
+
 local function get_os()
     local raw_os_name = ""
 
@@ -110,8 +115,6 @@ local function get_os()
 
     local os_patterns = {
         ["windows"] = "Windows",
-
-        -- Uses socat
         ["linux"]   = "Linux",
 
         ["osx"]     = "Mac",
@@ -121,7 +124,6 @@ local function get_os()
         ["^mingw"]  = "Windows",
         ["^cygwin"] = "Windows",
 
-        -- Because they have the good netcat (with -U)
         ["bsd$"]    = "Mac",
         ["sunos"]   = "Mac"
     }
@@ -209,8 +211,6 @@ local function spawn(time)
     local path = mp.get_property("path")
     if path == nil then return end
 
-    spawned = true
-
     local open_filename = mp.get_property("stream-open-filename")
     local ytdl = open_filename and network and path ~= open_filename
     if ytdl then
@@ -224,8 +224,6 @@ local function spawn(time)
     if options.socket == "" then
         if os_name == "Windows" then
             options.socket = "thumbfast"
-        elseif os_name == "Mac" then
-            options.socket = "/tmp/thumbfast"
         else
             options.socket = "/tmp/thumbfast"
         end
@@ -234,8 +232,6 @@ local function spawn(time)
     if options.thumbnail == "" then
         if os_name == "Windows" then
             options.thumbnail = os.getenv("TEMP").."\\thumbfast.out"
-        elseif os_name == "Mac" then
-            options.thumbnail = "/tmp/thumbfast.out"
         else
             options.thumbnail = "/tmp/thumbfast.out"
         end
@@ -250,42 +246,61 @@ local function spawn(time)
 
     remove_thumbnail_files()
 
+    local args = {
+        "mpv", path, "--no-config", "--msg-level=all=no", "--idle", "--pause", "--keep-open=always", "--really-quiet", "--no-terminal",
+        "--edition="..(mp.get_property_number("edition") or "auto"), "--vid="..(mp.get_property_number("vid") or "auto"), "--no-sub", "--no-audio",
+        "--start="..time, "--hr-seek=no",
+        "--ytdl-format=worst", "--demuxer-readahead-secs=0", "--demuxer-max-bytes=128KiB",
+        "--vd-lavc-skiploopfilter=all", "--vd-lavc-software-fallback=1", "--vd-lavc-fast",
+        "--vf="..vf_string(filters_all, true),
+        "--sws-allow-zimg=no", "--sws-fast=yes", "--sws-scaler=fast-bilinear",
+        "--video-rotate="..last_rotate,
+        "--ovc=rawvideo", "--of=image2", "--ofopts=update=1", "--o="..options.thumbnail
+    }
+
+    if os_name == "Windows" then
+        table.insert(args, "--input-ipc-server="..options.socket)
+    else
+        local client_script_path = options.socket..".run"
+        local file = io.open(client_script_path, "w+")
+        if file == nil then
+            mp.msg.error('client script write failed.')
+            return
+        else
+            file:write(string.format(client_script, options.socket))
+            file:close()
+            mp.command_native({name = "subprocess", playback_only = true, args = {"chmod", "+x", client_script_path}})
+            table.insert(args, "--script="..client_script_path)
+        end
+    end
+
+    spawned = true
+
     mp.command_native_async(
-        {name = "subprocess", playback_only = true, args = {
-            "mpv", path, "--no-config", "--msg-level=all=no", "--idle", "--pause", "--keep-open=always", "--really-quiet", "--no-terminal",
-            "--edition="..(mp.get_property_number("edition") or "auto"), "--vid="..(mp.get_property_number("vid") or "auto"), "--no-sub", "--no-audio",
-            "--input-ipc-server="..options.socket,
-            "--start="..time, "--hr-seek=no",
-            "--ytdl-format=worst", "--demuxer-readahead-secs=0", "--demuxer-max-bytes=128KiB",
-            "--vd-lavc-skiploopfilter=all", "--vd-lavc-software-fallback=1", "--vd-lavc-fast",
-            "--vf="..vf_string(filters_all, true),
-            "--sws-allow-zimg=no", "--sws-fast=yes", "--sws-scaler=fast-bilinear",
-            "--video-rotate="..last_rotate,
-            "--ovc=rawvideo", "--of=image2", "--ofopts=update=1", "--o="..options.thumbnail
-        }},
-        function() end
+        {name = "subprocess", playback_only = true, args = args},
+        function(success, result)
+            if success == false or result.status ~= 0 then
+                mp.msg.error('mpv subprocess create failed.')
+            end
+            spawned = false
+        end
     )
 end
 
-local function run(command, callback)
+local function run(command)
     if not spawned then return end
 
-    callback = callback or function() end
-
-    local seek_command
+    local file = nil
     if os_name == "Windows" then
-        seek_command = {"cmd", "/c", "echo "..command.." > \\\\.\\pipe\\" .. options.socket}
-    elseif os_name == "Mac" then
-        -- this doesn't work, on my system. not sure why.
-        seek_command = {"/usr/bin/env", "sh", "-c", "echo '"..command.."' | nc -w0 -U " .. options.socket}
+        file = io.open("\\\\.\\pipe\\"..options.socket, "r+")
     else
-        seek_command = {"/usr/bin/env", "sh", "-c", "echo '" .. command .. "' | socat - " .. options.socket}
+        file = io.open(options.socket, "r+")
     end
-
-    mp.command_native_async(
-        {name = "subprocess", playback_only = true, capture_stdout = true, args = seek_command},
-        callback
-    )
+    if file ~= nil then
+        file:seek('end')
+        file:write(command.."\n")
+        file:close()
+    end
 end
 
 local function thumb_index(thumbtime)
@@ -518,7 +533,10 @@ end
 local function shutdown()
     run("quit")
     remove_thumbnail_files()
-    os.remove(options.socket)
+    if os_name ~= "Windows" then
+        os.remove(options.socket)
+        os.remove(options.socket..'.run')
+    end
 end
 
 mp.observe_property("display-hidpi-scale", "native", watch_changes)
