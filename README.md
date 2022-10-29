@@ -20,7 +20,7 @@ Supports web videos e.g. YouTube (disabled by default), mixed aspect ratio video
 ## Requirements
 Windows: None, works out of the box
 
-Linux: socat, already installed on most systems
+Linux: None, works out of the box
 
 Mac: None, works out of the box
 
@@ -38,6 +38,7 @@ Hover on the timeline for nice thumbnails.
 `spawn_first`: Spawn thumbnailer on file load for faster initial thumbnails. Defaults to no.  
 `network`: Enable on remote files. Defaults to no.  
 `audio`: Enable on audio files. Defaults to no.
+`use_lua_io`: Windows only: write directly to pipe (requires LuaJIT). Should improve performance, ymmv.
 
 ## For UI developers: How to add thumbfast support to your script
 Declare the thumbfast state variable near the top of your script.  
