@@ -389,23 +389,37 @@ local function move_file(from, to)
     os.rename(from, to)
 end
 
-local last_seek = 0
-local function seek()
+local function seek(fast)
     if last_seek_time then
-        last_seek = mp.get_time()
-        run("async seek " .. last_seek_time .. " absolute+keyframes")
+        print(fast and "keyframe" or "exact")
+        run("async seek " .. last_seek_time .. (fast and " absolute+keyframes" or " absolute+exact"))
     end
 end
 
-local seek_period = 0.1
-local seek_timer = mp.add_timeout(seek_period, seek)
+local seek_period = 3/60
+local seek_period_counter = 0
+local seek_timer
+seek_timer = mp.add_periodic_timer(seek_period, function()
+    if seek_period_counter == 0 then
+        seek(true)
+        seek_period_counter = 1
+    else
+        if seek_period_counter == 2 then
+            seek_timer:kill()
+            seek()
+        else seek_period_counter = seek_period_counter + 1 end
+    end
+end)
 seek_timer:kill()
+
 local function request_seek()
-    if seek_timer:is_enabled() then return end
-    local next_seek = seek_period - (mp.get_time() - last_seek)
-    if next_seek <= 0 then seek() return end
-    seek_timer.timeout = next_seek
-    seek_timer:resume()
+    if seek_timer:is_enabled() then
+        seek_period_counter = 0
+    else
+        seek_timer:resume()
+        seek(true)
+        seek_period_counter = 1
+    end
 end
 
 local function check_new_thumb()
