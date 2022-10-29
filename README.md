@@ -100,5 +100,5 @@ Look at existing integrations for more concrete examples.
 
 If positioning isn't enough and you want complete control over rendering:  
 Register a `thumbfast-render` script message.  
-When requesting the thumbnail, set x and y to `nil` and supply your script's name as the 4th argument.  
+When requesting the thumbnail, set x and y to empty strings and supply your script's name as the 4th argument.  
 You will recieve a json object with the keys `width`, `height`, `x`, `y`, `socket`, `thumbnail`, `overlay_id` when the thumbnail is ready.

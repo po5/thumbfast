@@ -459,7 +459,7 @@ local function thumb(time, r_x, r_y, script)
     time = tonumber(time)
     if time == nil then return end
 
-    if r_x == nil or r_y == nil then
+    if r_x == "" or r_y == "" then
         x, y = nil, nil
     else
         x, y = math.floor(r_x + 0.5), math.floor(r_y + 0.5)
@@ -487,6 +487,7 @@ local function clear()
     show_thumbnail = false
     last_x = nil
     last_y = nil
+    if script_name then return end
     mp.command_native(
         {name = "overlay-remove", id=options.overlay_id}
     )
