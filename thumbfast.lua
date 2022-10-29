@@ -129,11 +129,13 @@ local file_timer = nil
 local file_check_period = 1/60
 local first_file = false
 
-local client_script = '#!/bin/bash\n'..
-'MPV_IPC_FD=0; MPV_IPC_PATH="%s"\n'..
-'trap "kill 0" EXIT\n'..
-'while [[ $# -ne 0 ]]; do case $1 in --mpv-ipc-fd=*) MPV_IPC_FD=${1/--mpv-ipc-fd=/} ;; esac; shift; done\n'..
-'if echo "print-text test" >&"$MPV_IPC_FD"; then echo -n > "$MPV_IPC_PATH"; tail --follow=name "$MPV_IPC_PATH" >&"$MPV_IPC_FD" & while read -r -u "$MPV_IPC_FD"; do :; done; fi'
+local client_script = [=[
+#!/bin/bash
+MPV_IPC_FD=0; MPV_IPC_PATH="%s"
+trap "kill 0" EXIT
+while [[ $# -ne 0 ]]; do case $1 in --mpv-ipc-fd=*) MPV_IPC_FD=${1/--mpv-ipc-fd=/} ;; esac; shift; done
+if echo "print-text test" >&"$MPV_IPC_FD"; then echo -n > "$MPV_IPC_PATH"; tail --follow=name "$MPV_IPC_PATH" >&"$MPV_IPC_FD" & while read -r -u "$MPV_IPC_FD"; do :; done; fi
+]=]
 
 local function get_os()
     local raw_os_name = ""
@@ -287,14 +289,12 @@ local function spawn(time)
 
     remove_thumbnail_files()
 
-    local mpv_hwdec = "no"
-    if options.hwdec then mpv_hwdec = "auto" end
     local args = {
         "mpv", path, "--no-config", "--msg-level=all=no", "--idle", "--pause", "--keep-open=always", "--really-quiet", "--no-terminal",
         "--edition="..(mp.get_property_number("edition") or "auto"), "--vid="..(mp.get_property_number("vid") or "auto"), "--no-sub", "--no-audio",
         "--start="..time, "--hr-seek=no",
         "--ytdl-format=worst", "--demuxer-readahead-secs=0", "--demuxer-max-bytes=128KiB",
-        "--vd-lavc-skiploopfilter=all", "--vd-lavc-software-fallback=1", "--vd-lavc-fast", "--vd-lavc-threads=2", "--hwdec="..mpv_hwdec,
+        "--vd-lavc-skiploopfilter=all", "--vd-lavc-software-fallback=1", "--vd-lavc-fast", "--vd-lavc-threads=2", "--hwdec="..(options.hwdec and "auto" or "no"),
         "--vf="..vf_string(filters_all, true),
         "--sws-allow-zimg=no", "--sws-fast=yes", "--sws-scaler=fast-bilinear",
         "--video-rotate="..last_rotate,
