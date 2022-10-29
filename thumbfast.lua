@@ -391,7 +391,6 @@ end
 
 local function seek(fast)
     if last_seek_time then
-        print(fast and "keyframe" or "exact")
         run("async seek " .. last_seek_time .. (fast and " absolute+keyframes" or " absolute+exact"))
     end
 end
