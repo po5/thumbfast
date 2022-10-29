@@ -289,7 +289,7 @@ local function spawn(time)
         "--edition="..(mp.get_property_number("edition") or "auto"), "--vid="..(mp.get_property_number("vid") or "auto"), "--no-sub", "--no-audio",
         "--start="..time, "--hr-seek=no",
         "--ytdl-format=worst", "--demuxer-readahead-secs=0", "--demuxer-max-bytes=128KiB",
-        "--vd-lavc-skiploopfilter=all", "--vd-lavc-software-fallback=1", "--vd-lavc-fast",
+        "--vd-lavc-skiploopfilter=all", "--vd-lavc-software-fallback=1", "--vd-lavc-fast", "--vd-lavc-threads=2",
         "--vf="..vf_string(filters_all, true),
         "--sws-allow-zimg=no", "--sws-fast=yes", "--sws-scaler=fast-bilinear",
         "--video-rotate="..last_rotate,
