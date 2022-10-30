@@ -47,8 +47,10 @@ if options.use_lua_io then
             ffi = ffi,
             C = ffi.C,
             bit = require("bit"),
+            socket_wc = "",
 
             -- WinAPI constants
+            CP_UTF8 = 65001,
             GENERIC_WRITE = 0x40000000,
             OPEN_EXISTING = 3,
             FILE_FLAG_WRITE_THROUGH = 0x80000000,
@@ -64,11 +66,26 @@ if options.use_lua_io then
         winapi._createfile_pipe_flags = winapi.bit.bor(winapi.FILE_FLAG_WRITE_THROUGH, winapi.FILE_FLAG_NO_BUFFERING)
 
         ffi.cdef[[
-            void* __stdcall CreateFileA(const char *lpFileName, unsigned long dwDesiredAccess, unsigned long dwShareMode, void *lpSecurityAttributes, unsigned long dwCreationDisposition, unsigned long dwFlagsAndAttributes, void *hTemplateFile);
+            void* __stdcall CreateFileW(const wchar_t *lpFileName, unsigned long dwDesiredAccess, unsigned long dwShareMode, void *lpSecurityAttributes, unsigned long dwCreationDisposition, unsigned long dwFlagsAndAttributes, void *hTemplateFile);
             bool __stdcall WriteFile(void *hFile, const void *lpBuffer, unsigned long nNumberOfBytesToWrite, unsigned long *lpNumberOfBytesWritten, void *lpOverlapped);
             bool __stdcall CloseHandle(void *hObject);
             bool __stdcall SetNamedPipeHandleState(void *hNamedPipe, unsigned long *lpMode, unsigned long *lpMaxCollectionCount, unsigned long *lpCollectDataTimeout);
+            int __stdcall MultiByteToWideChar(unsigned int CodePage, unsigned long dwFlags, const char *lpMultiByteStr, int cbMultiByte, wchar_t *lpWideCharStr, int cchWideChar);
         ]]
+
+        winapi.MultiByteToWideChar = function(MultiByteStr)
+            if MultiByteStr then
+                local utf16_len = winapi.C.MultiByteToWideChar(winapi.CP_UTF8, 0, MultiByteStr, -1, nil, 0)
+                if utf16_len > 0 then
+                    local utf16_str = winapi.ffi.new("wchar_t[?]", utf16_len)
+                    if winapi.C.MultiByteToWideChar(winapi.CP_UTF8, 0, MultiByteStr, -1, utf16_str, utf16_len) > 0 then
+                        return utf16_str
+                    end
+                end
+            end
+            return ""
+        end
+
     else
         options.use_lua_io = false
     end
@@ -188,6 +205,16 @@ local unique = mp.get_property_native("pid")
 
 options.socket = options.socket .. unique
 options.thumbnail = options.thumbnail .. unique
+
+if options.use_lua_io then
+    if os_name == "Windows" then
+        winapi.socket_wc = winapi.MultiByteToWideChar("\\\\.\\pipe\\" .. options.socket)
+    end
+
+    if winapi.socket_wc == "" then
+        options.use_lua_io = false
+    end
+end
 
 local mpv_path = "mpv"
 
@@ -317,8 +344,8 @@ end
 local function run(command)
     if not spawned then return end
 
-    if options.use_lua_io and os_name == "Windows" then
-        local hPipe = winapi.C.CreateFileA("\\\\.\\pipe\\" .. options.socket, winapi.GENERIC_WRITE, 0, nil, winapi.OPEN_EXISTING, winapi._createfile_pipe_flags, nil)
+    if options.use_lua_io then
+        local hPipe = winapi.C.CreateFileW(winapi.socket_wc, winapi.GENERIC_WRITE, 0, nil, winapi.OPEN_EXISTING, winapi._createfile_pipe_flags, nil)
         if hPipe ~= winapi.INVALID_HANDLE_VALUE then
             local buf = command .. "\n"
             winapi.C.SetNamedPipeHandleState(hPipe, winapi.PIPE_NOWAIT, nil, nil)
