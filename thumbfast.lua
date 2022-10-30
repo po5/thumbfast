@@ -320,10 +320,6 @@ local function run(command)
             winapi.C.CloseHandle(hPipe)
         end
 
-        if callback then
-            mp.add_timeout(0, callback)
-        end
-
         return
     end
 
