@@ -31,7 +31,7 @@ local options = {
     -- Enable hardware decoding
     hwdec = false,
 
-    -- Windows only: don't use subprocess to communicate with socket
+    -- Windows only: use native Windows API to write to pipe (requires LuaJIT)
     use_lua_io = false
 }
 
