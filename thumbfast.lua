@@ -189,6 +189,12 @@ local unique = mp.get_property_native("pid")
 options.socket = options.socket .. unique
 options.thumbnail = options.thumbnail .. unique
 
+local mpv_path = "mpv"
+
+if os_name == "Mac" and unique then
+    mpv_path = string.gsub(mp.command_native({name = "subprocess", playback_only = false, capture_stdout = true, args = {"ps", "-o", "comm=", "-p", tostring(unique)}}).stdout, "[\n\r]", "")
+end
+
 local function vf_string(filters, full)
     local vf = ""
     local vf_table = mp.get_property_native("vf")
@@ -268,7 +274,7 @@ local function spawn(time)
     remove_thumbnail_files()
 
     local args = {
-        "mpv", path, "--no-config", "--msg-level=all=no", "--idle", "--pause", "--keep-open=always", "--really-quiet", "--no-terminal",
+        mpv_path, path, "--no-config", "--msg-level=all=no", "--idle", "--pause", "--keep-open=always", "--really-quiet", "--no-terminal",
         "--edition="..(mp.get_property_number("edition") or "auto"), "--vid="..(mp.get_property_number("vid") or "auto"), "--no-sub", "--no-audio",
         "--start="..time, "--hr-seek=no",
         "--ytdl-format=worst", "--demuxer-readahead-secs=0", "--demuxer-max-bytes=128KiB",
