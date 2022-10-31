@@ -28,6 +28,9 @@ Linux: None, works out of the box
 
 Mac: None, works out of the box
 
+This script makes an effort to run on mpv versions as old as 0.29.0.  
+Note that most custom UIs will not support vintage mpv builds, consider updating if you're having issues.
+
 ## Usage
 Once the lua file is in your scripts directory, and you are using a UI that supports thumbfast, you are done.  
 Hover on the timeline for nice thumbnails.

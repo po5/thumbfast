@@ -39,6 +39,26 @@ mp.utils = require "mp.utils"
 mp.options = require "mp.options"
 mp.options.read_options(options, "thumbfast")
 
+local pre_0_30_0 = mp.command_native_async == nil
+
+function subprocess(args, async, callback)
+    callback = callback or function() end
+
+    if not pre_0_30_0 then
+        if async then
+            return mp.command_native_async({name = "subprocess", playback_only = true, args = args}, callback)
+        else
+            return mp.command_native({name = "subprocess", playback_only = false, capture_stdout = true, args = args})
+        end
+    else
+        if async then
+            return mp.utils.subprocess_detached({args = args}, callback)
+        else
+            return mp.utils.subprocess({args = args})
+        end
+    end
+end
+
 local winapi = {}
 if options.use_lua_io then
     local ffi_loaded, ffi = pcall(require, "ffi")
@@ -133,7 +153,7 @@ local client_script = [=[
 MPV_IPC_FD=0; MPV_IPC_PATH="%s"
 trap "kill 0" EXIT
 while [[ $# -ne 0 ]]; do case $1 in --mpv-ipc-fd=*) MPV_IPC_FD=${1/--mpv-ipc-fd=/} ;; esac; shift; done
-if echo "print-text test" >&"$MPV_IPC_FD"; then echo -n > "$MPV_IPC_PATH"; tail -f "$MPV_IPC_PATH" >&"$MPV_IPC_FD" & while read -r -u "$MPV_IPC_FD"; do :; done; fi
+if echo "print-text thumbfast" >&"$MPV_IPC_FD"; then echo -n > "$MPV_IPC_PATH"; tail -f "$MPV_IPC_PATH" >&"$MPV_IPC_FD" & while read -r -u "$MPV_IPC_FD"; do :; done; fi
 ]=]
 
 local function get_os()
@@ -149,7 +169,7 @@ local function get_os()
                 raw_os_name = env_OS
             end
         else
-            raw_os_name = mp.command_native({name = "subprocess", playback_only = false, capture_stdout = true, args = {"uname", "-s"}}).stdout
+            raw_os_name = subprocess({"uname", "-s"}).stdout
         end
     end
 
@@ -201,7 +221,7 @@ if options.thumbnail == "" then
     end
 end
 
-local unique = mp.get_property_native("pid")
+local unique = mp.utils.getpid()
 
 options.socket = options.socket .. unique
 options.thumbnail = options.thumbnail .. unique
@@ -219,7 +239,7 @@ end
 local mpv_path = "mpv"
 
 if os_name == "Mac" and unique then
-    mpv_path = string.gsub(mp.command_native({name = "subprocess", playback_only = false, capture_stdout = true, args = {"ps", "-o", "comm=", "-p", tostring(unique)}}).stdout, "[\n\r]", "")
+    mpv_path = string.gsub(subprocess({"ps", "-o", "comm=", "-p", tostring(unique)}).stdout, "[\n\r]", "")
 end
 
 local function vf_string(filters, full)
@@ -307,10 +327,14 @@ local function spawn(time)
         "--ytdl-format=worst", "--demuxer-readahead-secs=0", "--demuxer-max-bytes=128KiB",
         "--vd-lavc-skiploopfilter=all", "--vd-lavc-software-fallback=1", "--vd-lavc-fast", "--vd-lavc-threads=2", "--hwdec="..(options.hwdec and "auto" or "no"),
         "--vf="..vf_string(filters_all, true),
-        "--sws-allow-zimg=no", "--sws-fast=yes", "--sws-scaler=fast-bilinear",
+        "--sws-scaler=fast-bilinear",
         "--video-rotate="..last_rotate,
         "--ovc=rawvideo", "--of=image2", "--ofopts=update=1", "--o="..options.thumbnail
     }
+
+    if not pre_0_30_0 then
+        table.insert(args, "--sws-allow-zimg=no")
+    end
 
     if os_name == "Windows" then
         table.insert(args, "--input-ipc-server="..options.socket)
@@ -318,23 +342,22 @@ local function spawn(time)
         local client_script_path = options.socket..".run"
         local file = io.open(client_script_path, "w+")
         if file == nil then
-            mp.msg.error("client script write failed.")
+            mp.msg.error("client script write failed")
             return
         else
             file:write(string.format(client_script, options.socket))
             file:close()
-            mp.command_native_async({name = "subprocess", playback_only = true, args = {"chmod", "+x", client_script_path}}, function() end)
+            subprocess({"chmod", "+x", client_script_path}, true)
             table.insert(args, "--script="..client_script_path)
         end
     end
 
     spawned = true
 
-    mp.command_native_async(
-        {name = "subprocess", playback_only = true, args = args},
+    subprocess(args, true,
         function(success, result)
             if success == false or result.status ~= 0 then
-                mp.msg.error("mpv subprocess create failed.")
+                mp.msg.error("mpv subprocess create failed")
             end
             spawned = false
         end
@@ -377,9 +400,7 @@ local function draw(w, h, script)
     end
 
     if x ~= nil then
-        mp.command_native(
-            {name = "overlay-add", id=options.overlay_id, x=x, y=y, file=options.thumbnail..".bgra", offset=0, fmt="bgra", w=display_w, h=display_h, stride=(4*display_w)}
-        )
+        mp.command_native({"overlay-add", options.overlay_id, x, y, options.thumbnail..".bgra", 0, "bgra", display_w, display_h, (4*display_w)})
     elseif script then
         local json, err = mp.utils.format_json({width=display_w, height=display_h, x=x, y=y, socket=options.socket, thumbnail=options.thumbnail, overlay_id=options.overlay_id})
         mp.commandv("script-message-to", script, "thumbfast-render", json)
@@ -516,9 +537,7 @@ local function clear()
     last_x = nil
     last_y = nil
     if script_name then return end
-    mp.command_native(
-        {name = "overlay-remove", id=options.overlay_id}
-    )
+    mp.command_native({"overlay-remove", options.overlay_id})
 end
 
 local function watch_changes()
