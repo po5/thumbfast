@@ -593,7 +593,7 @@ local function file_load()
     last_seek_time = nil
 
     network = mp.get_property_bool("demuxer-via-network", false)
-    local image = mp.get_property_native("current-tracks/video/image", true)
+    local image = mp.get_property_native("current-tracks/video/image", false)
     local albumart = image and mp.get_property_native("current-tracks/video/albumart", false)
 
     disabled = (network and not options.network) or (albumart and not options.audio) or (image and not albumart)
