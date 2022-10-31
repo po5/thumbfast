@@ -3,6 +3,8 @@ High-performance on-the-fly thumbnailer for mpv.
 
 **The script does not display thumbnails on its own,** it is meant to be used alongside a UI script that calls thumbfast.
 
+[Preview of thumbfast on different UIs](https://user-images.githubusercontent.com/42466980/199102896-65f9e989-4189-4734-82a7-bda8ee63c7a6.webm)
+
 ## Installation
 Place thumbfast.lua in your mpv `scripts` folder.  
 Default settings are listed in thumbfast.conf, copy it to your mpv `script-opts` folder to customize.
