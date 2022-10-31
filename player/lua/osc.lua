@@ -840,7 +840,7 @@ function render_elements(master_ass)
 
                     -- thumbnail
                     if not thumbfast.disabled and thumbfast.width ~= 0 and thumbfast.height ~= 0 then
-                        local osd_w = mp.get_property_number("osd-dimensions/w")
+                        local osd_w = mp.get_property_number("osd-width")
                         if osd_w then
                             local r_w, r_h = get_virt_scale_factor()
                             mp.commandv("script-message-to", "thumbfast", "thumb",
