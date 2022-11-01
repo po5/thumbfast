@@ -114,6 +114,7 @@ end
 local spawned = false
 local network = false
 local disabled = false
+local spawn_waiting = false
 
 local x = nil
 local y = nil
@@ -381,10 +382,11 @@ local function spawn(time)
     end
 
     spawned = true
+    spawn_waiting = true
 
     subprocess(args, true,
         function(success, result)
-            if success == false or result.status ~= 0 then
+            if spawn_waiting and (success == false or result.status ~= 0) then
                 mp.msg.error("mpv subprocess create failed")
             end
             spawned = false
@@ -508,6 +510,7 @@ local function check_new_thumb()
     move_file(options.thumbnail, tmp)
     local finfo = mp.utils.file_info(tmp)
     if not finfo then return false end
+    spawn_waiting = false
     if first_file then
         request_seek()
         first_file = false
