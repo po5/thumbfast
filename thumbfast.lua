@@ -127,6 +127,8 @@ local effective_w = options.max_width
 local effective_h = options.max_height
 local real_w = nil
 local real_h = nil
+local last_real_w = nil
+local last_real_h = nil
 
 local script_name = nil
 
@@ -527,7 +529,10 @@ local function check_new_thumb()
         move_file(tmp, options.thumbnail..".bgra")
 
         real_w, real_h = w, h
-        if real_w then info(real_w, real_h) end
+        if real_w and (real_w ~= last_real_w or real_h ~= last_real_h) then
+            last_real_w, last_real_h = real_w, real_h
+            info(real_w, real_h)
+        end
         return true
     end
     return false
