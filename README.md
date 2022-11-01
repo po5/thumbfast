@@ -46,9 +46,9 @@ Hover on the timeline for nice thumbnails.
 `min_thumbnails`, `max_thumbnails`: Number of thumbnails. Default to 1 and 120.  
 `spawn_first`: Spawn thumbnailer on file load for faster initial thumbnails. Defaults to no.  
 `network`: Enable on remote files. Defaults to no.  
-`audio`: Enable on audio files. Defaults to no.
-`hwdec`: Enable hardware decoding. Defaults to no.
-`use_lua_io`: Windows only: write directly to pipe (requires LuaJIT). Should improve performance, ymmv.
+`audio`: Enable on audio files. Defaults to no.  
+`hwdec`: Enable hardware decoding. Defaults to no.  
+`direct_io`: Windows only: write directly to pipe (requires LuaJIT). Should improve performance, ymmv.
 
 ## For UI developers: How to add thumbfast support to your script
 Declare the thumbfast state variable near the top of your script.  

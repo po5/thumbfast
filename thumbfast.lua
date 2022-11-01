@@ -32,7 +32,7 @@ local options = {
     hwdec = false,
 
     -- Windows only: use native Windows API to write to pipe (requires LuaJIT)
-    use_lua_io = false
+    direct_io = false
 }
 
 mp.utils = require "mp.utils"
@@ -60,7 +60,7 @@ function subprocess(args, async, callback)
 end
 
 local winapi = {}
-if options.use_lua_io then
+if options.direct_io then
     local ffi_loaded, ffi = pcall(require, "ffi")
     if ffi_loaded then
         winapi = {
@@ -107,7 +107,7 @@ if options.use_lua_io then
         end
 
     else
-        options.use_lua_io = false
+        options.direct_io = false
     end
 end
 
@@ -251,13 +251,13 @@ local unique = mp.utils.getpid()
 options.socket = options.socket .. unique
 options.thumbnail = options.thumbnail .. unique
 
-if options.use_lua_io then
+if options.direct_io then
     if os_name == "Windows" then
         winapi.socket_wc = winapi.MultiByteToWideChar("\\\\.\\pipe\\" .. options.socket)
     end
 
     if winapi.socket_wc == "" then
-        options.use_lua_io = false
+        options.direct_io = false
     end
 end
 
@@ -406,7 +406,7 @@ end
 local function run(command)
     if not spawned then return end
 
-    if options.use_lua_io then
+    if options.direct_io then
         local hPipe = winapi.C.CreateFileW(winapi.socket_wc, winapi.GENERIC_WRITE, 0, nil, winapi.OPEN_EXISTING, winapi._createfile_pipe_flags, nil)
         if hPipe ~= winapi.INVALID_HANDLE_VALUE then
             local buf = command .. "\n"
