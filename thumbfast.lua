@@ -337,10 +337,6 @@ local function spawn(time)
         table.insert(args, "--sws-allow-zimg=no")
     end
 
-    if os_name == "Mac" then
-        table.insert(args, "--macos-app-activation-policy=prohibited")
-    end
-
     if os_name == "Windows" then
         table.insert(args, "--input-ipc-server="..options.socket)
     else
