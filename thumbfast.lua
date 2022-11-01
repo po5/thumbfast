@@ -145,6 +145,9 @@ local last_rotate = 0
 local par = ""
 local last_par = ""
 
+local last_has_vid = 0
+local has_vid = 0
+
 local file_timer = nil
 local file_check_period = 1/60
 local first_file = false
@@ -322,6 +325,7 @@ local function info(w, h)
     local image = mp.get_property_native("current-tracks/video/image", false)
     local albumart = image and mp.get_property_native("current-tracks/video/albumart", false)
     disabled = not (w and h) or
+        has_vid == 0 or
         (network and not options.network) or
         (albumart and not options.audio) or
         (image and not albumart)
@@ -349,9 +353,12 @@ local function spawn(time)
 
     remove_thumbnail_files()
 
+    local vid = mp.get_property_number("vid")
+    has_vid = vid or 0
+
     local args = {
         mpv_path, path, "--no-config", "--msg-level=all=no", "--idle", "--pause", "--keep-open=always", "--really-quiet", "--no-terminal",
-        "--edition="..(mp.get_property_number("edition") or "auto"), "--vid="..(mp.get_property_number("vid") or "auto"), "--no-sub", "--no-audio",
+        "--edition="..(mp.get_property_number("edition") or "auto"), "--vid="..(vid or "auto"), "--no-sub", "--no-audio",
         "--start="..time, "--hr-seek=no",
         "--ytdl-format=worst", "--demuxer-readahead-secs=0", "--demuxer-max-bytes=128KiB",
         "--vd-lavc-skiploopfilter=all", "--vd-lavc-software-fallback=1", "--vd-lavc-fast", "--vd-lavc-threads=2", "--hwdec="..(options.hwdec and "auto" or "no"),
@@ -589,6 +596,8 @@ local function watch_changes()
     if resized then
         last_rotate = rotate
         info(effective_w, effective_h)
+    elseif last_has_vid ~= has_vid and has_vid ~= 0 then
+        info(effective_w, effective_h)
     end
 
     if spawned then
@@ -615,16 +624,30 @@ local function watch_changes()
     last_vf_reset = vf_reset
     last_rotate = rotate
     last_par = par
+    last_has_vid = has_vid
 end
 
 local watch_changes_debounce = debounce(watch_changes, 500)
 
 local function sync_changes(prop, val)
-    if not spawned or val == nil then return end
+    if val == nil then return end
 
     if type(val) == "boolean" then
+        if prop == "vid" then
+            has_vid = 0
+            last_has_vid = 0
+            info(effective_w, effective_h)
+            clear()
+            return
+        end
         val = val and "yes" or "no"
     end
+
+    if prop == "vid" then
+        has_vid = 1
+    end
+
+    if not spawned then return end
 
     run("set "..prop.." "..val)
     watch_changes_debounce()
