@@ -29,10 +29,7 @@ local options = {
     audio = false,
 
     -- Enable hardware decoding
-    hwdec = false,
-
-    -- Windows only: use native Windows API to write to pipe (requires LuaJIT)
-    direct_io = false
+    hwdec = false
 }
 
 mp.utils = require "mp.utils"
@@ -56,58 +53,6 @@ function subprocess(args, async, callback)
         else
             return mp.utils.subprocess({args = args})
         end
-    end
-end
-
-local winapi = {}
-if options.direct_io then
-    local ffi_loaded, ffi = pcall(require, "ffi")
-    if ffi_loaded then
-        winapi = {
-            ffi = ffi,
-            C = ffi.C,
-            bit = require("bit"),
-            socket_wc = "",
-
-            -- WinAPI constants
-            CP_UTF8 = 65001,
-            GENERIC_WRITE = 0x40000000,
-            OPEN_EXISTING = 3,
-            FILE_FLAG_WRITE_THROUGH = 0x80000000,
-            FILE_FLAG_NO_BUFFERING = 0x20000000,
-            PIPE_NOWAIT = ffi.new("unsigned long[1]", 0x00000001),
-
-            INVALID_HANDLE_VALUE = ffi.cast("void*", -1),
-
-            -- don't care about how many bytes WriteFile wrote, so allocate something to store the result once
-            _lpNumberOfBytesWritten = ffi.new("unsigned long[1]"),
-        }
-        -- cache flags used in run() to avoid bor() call
-        winapi._createfile_pipe_flags = winapi.bit.bor(winapi.FILE_FLAG_WRITE_THROUGH, winapi.FILE_FLAG_NO_BUFFERING)
-
-        ffi.cdef[[
-            void* __stdcall CreateFileW(const wchar_t *lpFileName, unsigned long dwDesiredAccess, unsigned long dwShareMode, void *lpSecurityAttributes, unsigned long dwCreationDisposition, unsigned long dwFlagsAndAttributes, void *hTemplateFile);
-            bool __stdcall WriteFile(void *hFile, const void *lpBuffer, unsigned long nNumberOfBytesToWrite, unsigned long *lpNumberOfBytesWritten, void *lpOverlapped);
-            bool __stdcall CloseHandle(void *hObject);
-            bool __stdcall SetNamedPipeHandleState(void *hNamedPipe, unsigned long *lpMode, unsigned long *lpMaxCollectionCount, unsigned long *lpCollectDataTimeout);
-            int __stdcall MultiByteToWideChar(unsigned int CodePage, unsigned long dwFlags, const char *lpMultiByteStr, int cbMultiByte, wchar_t *lpWideCharStr, int cchWideChar);
-        ]]
-
-        winapi.MultiByteToWideChar = function(MultiByteStr)
-            if MultiByteStr then
-                local utf16_len = winapi.C.MultiByteToWideChar(winapi.CP_UTF8, 0, MultiByteStr, -1, nil, 0)
-                if utf16_len > 0 then
-                    local utf16_str = winapi.ffi.new("wchar_t[?]", utf16_len)
-                    if winapi.C.MultiByteToWideChar(winapi.CP_UTF8, 0, MultiByteStr, -1, utf16_str, utf16_len) > 0 then
-                        return utf16_str
-                    end
-                end
-            end
-            return ""
-        end
-
-    else
-        options.direct_io = false
     end
 end
 
@@ -251,13 +196,56 @@ local unique = mp.utils.getpid()
 options.socket = options.socket .. unique
 options.thumbnail = options.thumbnail .. unique
 
-if options.direct_io then
-    if os_name == "Windows" then
-        winapi.socket_wc = winapi.MultiByteToWideChar("\\\\.\\pipe\\" .. options.socket)
-    end
+local direct_io = false
+local winapi = {}
+-- detect LuaJIT
+if os_name == "Windows" and ({false, [1] = true})[1] and type(jit) == "table" then
+    local ffi_loaded, ffi = pcall(require, "ffi")
+    if ffi_loaded then
+        winapi = {
+            ffi = ffi,
+            C = ffi.C,
+            bit = require("bit"),
+            socket_wc = "",
 
-    if winapi.socket_wc == "" then
-        options.direct_io = false
+            -- WinAPI constants
+            CP_UTF8 = 65001,
+            GENERIC_WRITE = 0x40000000,
+            OPEN_EXISTING = 3,
+            FILE_FLAG_WRITE_THROUGH = 0x80000000,
+            FILE_FLAG_NO_BUFFERING = 0x20000000,
+            PIPE_NOWAIT = ffi.new("unsigned long[1]", 0x00000001),
+
+            INVALID_HANDLE_VALUE = ffi.cast("void*", -1),
+
+            -- don't care about how many bytes WriteFile wrote, so allocate something to store the result once
+            _lpNumberOfBytesWritten = ffi.new("unsigned long[1]"),
+        }
+        -- cache flags used in run() to avoid bor() call
+        winapi._createfile_pipe_flags = winapi.bit.bor(winapi.FILE_FLAG_WRITE_THROUGH, winapi.FILE_FLAG_NO_BUFFERING)
+
+        ffi.cdef[[
+            void* __stdcall CreateFileW(const wchar_t *lpFileName, unsigned long dwDesiredAccess, unsigned long dwShareMode, void *lpSecurityAttributes, unsigned long dwCreationDisposition, unsigned long dwFlagsAndAttributes, void *hTemplateFile);
+            bool __stdcall WriteFile(void *hFile, const void *lpBuffer, unsigned long nNumberOfBytesToWrite, unsigned long *lpNumberOfBytesWritten, void *lpOverlapped);
+            bool __stdcall CloseHandle(void *hObject);
+            bool __stdcall SetNamedPipeHandleState(void *hNamedPipe, unsigned long *lpMode, unsigned long *lpMaxCollectionCount, unsigned long *lpCollectDataTimeout);
+            int __stdcall MultiByteToWideChar(unsigned int CodePage, unsigned long dwFlags, const char *lpMultiByteStr, int cbMultiByte, wchar_t *lpWideCharStr, int cchWideChar);
+        ]]
+
+        winapi.MultiByteToWideChar = function(MultiByteStr)
+            if MultiByteStr then
+                local utf16_len = winapi.C.MultiByteToWideChar(winapi.CP_UTF8, 0, MultiByteStr, -1, nil, 0)
+                if utf16_len > 0 then
+                    local utf16_str = winapi.ffi.new("wchar_t[?]", utf16_len)
+                    if winapi.C.MultiByteToWideChar(winapi.CP_UTF8, 0, MultiByteStr, -1, utf16_str, utf16_len) > 0 then
+                        return utf16_str
+                    end
+                end
+            end
+            return ""
+        end
+        winapi.socket_wc = winapi.MultiByteToWideChar("\\\\.\\pipe\\" .. options.socket)
+        direct_io = true
     end
 end
 
@@ -406,7 +394,7 @@ end
 local function run(command)
     if not spawned then return end
 
-    if options.direct_io then
+    if direct_io then
         local hPipe = winapi.C.CreateFileW(winapi.socket_wc, winapi.GENERIC_WRITE, 0, nil, winapi.OPEN_EXISTING, winapi._createfile_pipe_flags, nil)
         if hPipe ~= winapi.INVALID_HANDLE_VALUE then
             local buf = command .. "\n"
