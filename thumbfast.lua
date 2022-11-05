@@ -326,13 +326,13 @@ local function info(w, h)
     network = mp.get_property_bool("demuxer-via-network", false)
     local image = mp.get_property_native("current-tracks/video/image", false)
     local albumart = image and mp.get_property_native("current-tracks/video/albumart", false)
-    disabled = not (w and h) or
+    disabled = (w or 0) == 0 or (h or 0) == 0 or
         has_vid == 0 or
         (network and not options.network) or
         (albumart and not options.audio) or
         (image and not albumart)
 
-    local json, err = mp.utils.format_json({width=display_w, height=display_h, disabled=disabled, socket=options.socket, thumbnail=options.thumbnail, overlay_id=options.overlay_id})
+    local json, err = mp.utils.format_json({width=display_w, height=display_h, disabled=disabled, available=true, socket=options.socket, thumbnail=options.thumbnail, overlay_id=options.overlay_id})
     mp.commandv("script-message", "thumbfast-info", json)
 end
 

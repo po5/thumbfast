@@ -55,7 +55,8 @@ Declare the thumbfast state variable near the top of your script.
 local thumbfast = {
     width = 0,
     height = 0,
-    disabled = false
+    disabled = true,
+    available = false
 }
 ```
 Register the state setter near the end of your script, or near where your other script messages are.  
@@ -81,7 +82,7 @@ This code should be run when the user hovers on the seekbar. Don't worry even if
 -- display_width = mp.get_property_number("osd-dimensions/w")
 -- hovered_seconds = video_duration * cursor_x / display_width
 
-if not thumbfast.disabled and thumbfast.width ~= 0 and thumbfast.height ~= 0 then
+if not thumbfast.disabled then
     mp.commandv("script-message-to", "thumbfast", "thumb",
         -- hovered time in seconds
         hovered_seconds,
@@ -94,7 +95,7 @@ end
 ```
 This code should be run when the user leaves the seekbar.
 ```lua
-if thumbfast.width ~= 0 and thumbfast.height ~= 0 then
+if thumbfast.available then
     mp.commandv("script-message-to", "thumbfast", "clear")
 end
 ```
