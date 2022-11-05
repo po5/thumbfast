@@ -79,7 +79,7 @@ This code should be run when the user hovers on the seekbar. Don't worry even if
 -- margin_left = 10
 -- margin_right = 10
 -- cursor_x, cursor_y = mp.get_mouse_pos()
--- display_width = mp.get_property_number("osd-dimensions/w")
+-- display_width = mp.get_property_number("osd-width")
 -- hovered_seconds = video_duration * cursor_x / display_width
 
 if not thumbfast.disabled then
