@@ -11,12 +11,12 @@ Default settings are listed in thumbfast.conf, copy it to your mpv `script-opts`
 
 ## UI support
 - [uosc](https://github.com/tomasklaen/uosc)
-- [osc.lua](https://github.com/po5/thumbfast/blob/vanilla-osc/player/lua/osc.lua) (fork)
+- [osc.lua](https://github.com/po5/thumbfast/blob/vanilla-osc/player/lua/osc.lua) (use this fork for vanilla UI)
 - [progressbar](https://github.com/torque/mpv-progressbar) (PR pending, [lua](https://github.com/po5/thumbfast/blob/mpv-progressbar/build/progressbar.lua))
 - [tethys](https://github.com/Zren/mpv-osc-tethys) (PR pending, [lua](https://github.com/Zren/mpv-osc-tethys/blob/a6a3f4295e9a68dbb0763f30cb2d9f73b2452445/osc_tethys.lua))
-- [modern](https://github.com/maoiscat/mpv-osc-modern/tree/with.thumbfast) ([lua](https://github.com/maoiscat/mpv-osc-modern/blob/with.thumbfast/modern.lua))
+- [modern](https://github.com/maoiscat/mpv-osc-modern/tree/with.thumbfast)
 - [MordenX](https://github.com/cyl0/MordenX) (PR pending, [lua](https://github.com/cyl0/MordenX/blob/16cf217c460b4eee8fdafe6821cc3c0db3d1532f/mordenx.lua))
-- [oscc](https://github.com/longtermfree/oscc) (PR pending, [lua](https://github.com/longtermfree/oscc/blob/ebe49992a9121980f5956be03d6c8c9b52a2ff5e/oscc.lua))
+- [oscc](https://github.com/longtermfree/oscc)
 
 ## Features
 No dependencies, no background thumbnail generation hogging your CPU.  
