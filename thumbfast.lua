@@ -317,11 +317,11 @@ local function calc_dimensions()
     end
 end
 
+local info_timer = nil
+
 local function info(w, h)
     local display_w, display_h = w, h
-    if mp.get_property_number("video-params/rotate", 0) % 180 == 90 then
-        display_w, display_h = h, w
-    end
+    local rotate = mp.get_property_number("video-params/rotate")
 
     network = mp.get_property_bool("demuxer-via-network", false)
     local image = mp.get_property_native("current-tracks/video/image", false)
@@ -331,6 +331,17 @@ local function info(w, h)
         (network and not options.network) or
         (albumart and not options.audio) or
         (image and not albumart)
+
+    if info_timer then
+        info_timer:kill()
+        info_timer = nil
+    elseif has_vid == 0 or (rotate == nil and not disabled) then
+        info_timer = mp.add_timeout(0.05, function() info(w, h) end)
+    end
+
+    if rotate ~= nil and rotate % 180 == 90 then
+        display_w, display_h = h, w
+    end
 
     local json, err = mp.utils.format_json({width=display_w, height=display_h, disabled=disabled, available=true, socket=options.socket, thumbnail=options.thumbnail, overlay_id=options.overlay_id})
     mp.commandv("script-message", "thumbfast-info", json)
@@ -661,7 +672,12 @@ end
 local function file_load()
     clear()
     real_w, real_h = nil, nil
+    last_real_w, last_real_h = nil, nil
     last_seek_time = nil
+    if info_timer then
+        info_timer:kill()
+        info_timer = nil
+    end
 
     calc_dimensions()
     info(effective_w, effective_h)
