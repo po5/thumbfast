@@ -12,7 +12,7 @@ Default settings are listed in thumbfast.conf, copy it to your mpv `script-opts`
 ## UI support
 - [uosc](https://github.com/tomasklaen/uosc)
 - [osc.lua](https://github.com/po5/thumbfast/blob/vanilla-osc/player/lua/osc.lua) (use this fork for vanilla UI)
-- [progressbar](https://github.com/torque/mpv-progressbar) (PR pending, [lua](https://github.com/po5/thumbfast/blob/mpv-progressbar/build/progressbar.lua))
+- [progressbar](https://github.com/torque/mpv-progressbar)
 - [tethys](https://github.com/Zren/mpv-osc-tethys) (PR pending, [lua](https://github.com/Zren/mpv-osc-tethys/blob/a6a3f4295e9a68dbb0763f30cb2d9f73b2452445/osc_tethys.lua))
 - [modern](https://github.com/maoiscat/mpv-osc-modern/tree/with.thumbfast) (separate branch)
 - [MordenX](https://github.com/cyl0/MordenX)
