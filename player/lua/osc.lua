@@ -854,12 +854,15 @@ function render_elements(master_ass)
                             local thumb_x = math.min(osd_w - thumbfast.width - thumb_margin_x, math.max(thumb_margin_x, thumb_tx / r_w - thumbfast.width / 2))
                             local thumb_y = user_opts.layout ~= "topbar" and thumb_ty / r_h - thumbfast.height - tooltip_font_size / r_h - thumb_margin_y or thumb_ty / r_h + thumb_margin_y
 
+                            thumb_x = math.floor(thumb_x + 0.5)
+                            thumb_y = math.floor(thumb_y + 0.5)
+
                             elem_ass:new_event()
                             elem_ass:pos(thumb_x * r_w, thumb_y * r_h)
                             elem_ass:append(osc_styles.timePosBar)
                             elem_ass:append("{\\1a&H20&}")
                             elem_ass:draw_start()
-                            elem_ass:rect_cw(-thumb_pad * r_h, -thumb_pad * r_h, (thumbfast.width + thumb_pad) * r_w, (thumbfast.height + thumb_pad) * r_h)
+                            elem_ass:rect_cw(-thumb_pad * r_w, -thumb_pad * r_h, (thumbfast.width + thumb_pad) * r_w, (thumbfast.height + thumb_pad) * r_h)
                             elem_ass:draw_stop()
 
                             mp.commandv("script-message-to", "thumbfast", "thumb",
