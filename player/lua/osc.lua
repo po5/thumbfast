@@ -2742,6 +2742,11 @@ update_duration_watch()
 
 mp.register_event("shutdown", shutdown)
 mp.register_event("start-file", request_init)
+mp.observe_property("osc", "bool", function(name, value)
+    if value == true then
+        mp.set_property("osc", "no")
+    end
+end)
 mp.observe_property("track-list", nil, request_init)
 mp.observe_property("playlist", nil, request_init)
 mp.observe_property("chapter-list", "native", function(_, list)
