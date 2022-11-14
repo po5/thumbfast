@@ -17,6 +17,7 @@ Default settings are listed in thumbfast.conf, copy it to your mpv `script-opts`
 - [modern](https://github.com/maoiscat/mpv-osc-modern/tree/with.thumbfast) (separate branch)
 - [MordenX](https://github.com/cyl0/MordenX)
 - [oscc](https://github.com/longtermfree/oscc)
+- [mfpbar](https://codeberg.org/NRK/mpv-toolbox/src/branch/master/mfpbar)
 
 ## Features
 No dependencies, no background thumbnail generation hogging your CPU.  
