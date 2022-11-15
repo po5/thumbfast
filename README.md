@@ -9,6 +9,8 @@ High-performance on-the-fly thumbnailer for mpv.
 Place thumbfast.lua in your mpv `scripts` folder.  
 Default settings are listed in thumbfast.conf, copy it to your mpv `script-opts` folder to customize.
 
+For the vanilla UI, you have to install [osc.lua](https://github.com/po5/thumbfast/blob/vanilla-osc/player/lua/osc.lua) (which is identical to the vanilla UI) and add `osc=no` in your `mpv.conf`.
+
 ## UI support
 - [uosc](https://github.com/tomasklaen/uosc)
 - [osc.lua](https://github.com/po5/thumbfast/blob/vanilla-osc/player/lua/osc.lua) (use this fork for vanilla UI)
