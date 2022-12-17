@@ -261,13 +261,6 @@ if options.direct_io then
     end
 end
 
-local mpv_path = "mpv"
-
-if os_name == "Mac" and unique then
-    mpv_path = string.gsub(subprocess({"ps", "-o", "comm=", "-p", tostring(unique)}).stdout, "[\n\r]", "")
-    mpv_path = string.gsub(mpv_path, "/mpv%-bundle$", "/mpv")
-end
-
 local function vf_string(filters, full)
     local vf = ""
     local vf_table = mp.get_property_native("vf")
@@ -370,7 +363,7 @@ local function spawn(time)
     has_vid = vid or 0
 
     local args = {
-        mpv_path, path, "--no-config", "--msg-level=all=no", "--idle", "--pause", "--keep-open=always", "--really-quiet", "--no-terminal",
+        "mpv", path, "--no-config", "--msg-level=all=no", "--idle", "--pause", "--keep-open=always", "--really-quiet", "--no-terminal",
         "--edition="..(mp.get_property_number("edition") or "auto"), "--vid="..(vid or "auto"), "--no-sub", "--no-audio",
         "--start="..time, "--hr-seek=no",
         "--ytdl-format=worst", "--demuxer-readahead-secs=0", "--demuxer-max-bytes=128KiB",
