@@ -608,8 +608,10 @@ local function file_load()
 
     spawned = false
     if options.spawn_first then
-        spawn(mp.get_property_number("time-pos", 0))
-        first_file = true
+        mp.add_timeout(0.1, function()
+            spawn(mp.get_property_number("time-pos", 0))
+            first_file = true
+        end)
     end
 end
 
