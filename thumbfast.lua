@@ -174,7 +174,7 @@ local function debounce(func, wait)
 end
 
 local client_script = [=[
-#!/bin/bash
+#!/usr/bin/env bash
 MPV_IPC_FD=0; MPV_IPC_PATH="%s"
 trap "kill 0" EXIT
 while [[ $# -ne 0 ]]; do case $1 in --mpv-ipc-fd=*) MPV_IPC_FD=${1/--mpv-ipc-fd=/} ;; esac; shift; done
