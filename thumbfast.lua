@@ -116,6 +116,8 @@ local network = false
 local disabled = false
 local spawn_waiting = false
 
+local dirty = false
+
 local x = nil
 local y = nil
 local last_x = x
@@ -153,25 +155,6 @@ local has_vid = 0
 local file_timer = nil
 local file_check_period = 1/60
 local first_file = false
-
-local function debounce(func, wait)
-    func = type(func) == "function" and func or function() end
-    wait = type(wait) == "number" and wait / 1000 or 0
-
-    local timer = nil
-    local timer_end = function ()
-        timer:kill()
-        timer = nil
-        func()
-    end
-
-    return function ()
-        if timer then
-            timer:kill()
-        end
-        timer = mp.add_timeout(wait, timer_end)
-    end
-end
 
 local client_script = [=[
 #!/usr/bin/env bash
@@ -595,6 +578,8 @@ local function clear()
 end
 
 local function watch_changes()
+    if not dirty then return end
+
     local old_w = effective_w
     local old_h = effective_h
 
@@ -641,9 +626,8 @@ local function watch_changes()
     last_rotate = rotate
     last_par = par
     last_has_vid = has_vid
+    dirty = false
 end
-
-local watch_changes_debounce = debounce(watch_changes, 500)
 
 local function sync_changes(prop, val)
     if val == nil then return end
@@ -666,7 +650,11 @@ local function sync_changes(prop, val)
     if not spawned then return end
 
     run("set "..prop.." "..val)
-    watch_changes_debounce()
+    dirty = true
+end
+
+local function mark_dirty()
+    dirty = true
 end
 
 local function file_load()
@@ -699,9 +687,9 @@ local function shutdown()
     end
 end
 
-mp.observe_property("display-hidpi-scale", "native", watch_changes)
-mp.observe_property("video-out-params", "native", watch_changes)
-mp.observe_property("vf", "native", watch_changes_debounce)
+mp.observe_property("display-hidpi-scale", "native", mark_dirty)
+mp.observe_property("video-out-params", "native", mark_dirty)
+mp.observe_property("vf", "native", mark_dirty)
 mp.observe_property("vid", "native", sync_changes)
 mp.observe_property("edition", "native", sync_changes)
 
@@ -710,3 +698,5 @@ mp.register_script_message("clear", clear)
 
 mp.register_event("file-loaded", file_load)
 mp.register_event("shutdown", shutdown)
+
+mp.register_idle(watch_changes)
