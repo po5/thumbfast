@@ -2245,7 +2245,9 @@ end
 function shutdown()
     reset_margins()
     utils.shared_script_property_set("osc-margins", nil)
+    if mp.del_property then
     mp.del_property("user-data/osc")
+    end
 end
 
 --
