@@ -1,3 +1,4 @@
+mp.set_property("osc", "no")
 local assdraw = require 'mp.assdraw'
 local msg = require 'mp.msg'
 local opt = require 'mp.options'
@@ -2422,14 +2423,14 @@ function render()
 
     --mouse show/hide area
     for k,cords in pairs(osc_param.areas["showhide"]) do
-        set_virt_mouse_area(cords.x1, cords.y1, cords.x2, cords.y2, "showhide")
+        set_virt_mouse_area(cords.x1, cords.y1, cords.x2, cords.y2, "thumbfast-osc-showhide")
     end
     if osc_param.areas["showhide_wc"] then
         for k,cords in pairs(osc_param.areas["showhide_wc"]) do
-            set_virt_mouse_area(cords.x1, cords.y1, cords.x2, cords.y2, "showhide_wc")
+            set_virt_mouse_area(cords.x1, cords.y1, cords.x2, cords.y2, "thumbfast-osc-showhide_wc")
         end
     else
-        set_virt_mouse_area(0, 0, 0, 0, "showhide_wc")
+        set_virt_mouse_area(0, 0, 0, 0, "thumbfast-osc-showhide_wc")
     end
     do_enable_keybindings()
 
@@ -2438,13 +2439,13 @@ function render()
 
     for _,cords in ipairs(osc_param.areas["input"]) do
         if state.osc_visible then -- activate only when OSC is actually visible
-            set_virt_mouse_area(cords.x1, cords.y1, cords.x2, cords.y2, "input")
+            set_virt_mouse_area(cords.x1, cords.y1, cords.x2, cords.y2, "thumbfast-osc-input")
         end
         if state.osc_visible ~= state.input_enabled then
             if state.osc_visible then
-                mp.enable_key_bindings("input")
+                mp.enable_key_bindings("thumbfast-osc-input")
             else
-                mp.disable_key_bindings("input")
+                mp.disable_key_bindings("thumbfast-osc-input")
             end
             state.input_enabled = state.osc_visible
         end
@@ -2457,13 +2458,13 @@ function render()
     if osc_param.areas["window-controls"] then
         for _,cords in ipairs(osc_param.areas["window-controls"]) do
             if state.osc_visible then -- activate only when OSC is actually visible
-                set_virt_mouse_area(cords.x1, cords.y1, cords.x2, cords.y2, "window-controls")
+                set_virt_mouse_area(cords.x1, cords.y1, cords.x2, cords.y2, "thumbfast-osc-window-controls")
             end
             if state.osc_visible ~= state.windowcontrols_buttons then
                 if state.osc_visible then
-                    mp.enable_key_bindings("window-controls")
+                    mp.enable_key_bindings("thumbfast-osc-window-controls")
                 else
-                    mp.disable_key_bindings("window-controls")
+                    mp.disable_key_bindings("thumbfast-osc-window-controls")
                 end
                 state.windowcontrols_buttons = state.osc_visible
             end
@@ -2675,8 +2676,8 @@ function tick()
         set_osd(display_w, display_h, ass.text)
 
         if state.showhide_enabled then
-            mp.disable_key_bindings("showhide")
-            mp.disable_key_bindings("showhide_wc")
+            mp.disable_key_bindings("thumbfast-osc-showhide")
+            mp.disable_key_bindings("thumbfast-osc-showhide_wc")
             state.showhide_enabled = false
         end
 
@@ -2711,8 +2712,8 @@ end
 function do_enable_keybindings()
     if state.enabled then
         if not state.showhide_enabled then
-            mp.enable_key_bindings("showhide", "allow-vo-dragging+allow-hide-cursor")
-            mp.enable_key_bindings("showhide_wc", "allow-vo-dragging+allow-hide-cursor")
+            mp.enable_key_bindings("thumbfast-osc-showhide", "allow-vo-dragging+allow-hide-cursor")
+            mp.enable_key_bindings("thumbfast-osc-showhide_wc", "allow-vo-dragging+allow-hide-cursor")
         end
         state.showhide_enabled = true
     end
@@ -2725,8 +2726,8 @@ function enable_osc(enable)
     else
         hide_osc() -- acts immediately when state.enabled == false
         if state.showhide_enabled then
-            mp.disable_key_bindings("showhide")
-            mp.disable_key_bindings("showhide_wc")
+            mp.disable_key_bindings("thumbfast-osc-showhide")
+            mp.disable_key_bindings("thumbfast-osc-showhide_wc")
         end
         state.showhide_enabled = false
     end
@@ -2759,11 +2760,6 @@ update_duration_watch()
 
 mp.register_event("shutdown", shutdown)
 mp.register_event("start-file", request_init)
-mp.observe_property("osc", "bool", function(name, value)
-    if value == true then
-        mp.set_property("osc", "no")
-    end
-end)
 mp.observe_property("track-list", nil, request_init)
 mp.observe_property("playlist", nil, request_init)
 mp.observe_property("chapter-list", "native", function(_, list)
@@ -2832,11 +2828,11 @@ end)
 mp.set_key_bindings({
     {"mouse_move",              function(e) process_event("mouse_move", nil) end},
     {"mouse_leave",             mouse_leave},
-}, "showhide", "force")
+}, "thumbfast-osc-showhide", "force")
 mp.set_key_bindings({
     {"mouse_move",              function(e) process_event("mouse_move", nil) end},
     {"mouse_leave",             mouse_leave},
-}, "showhide_wc", "force")
+}, "thumbfast-osc-showhide_wc", "force")
 do_enable_keybindings()
 
 --mouse input bindings
@@ -2855,14 +2851,14 @@ mp.set_key_bindings({
     {"mbtn_left_dbl",       "ignore"},
     {"shift+mbtn_left_dbl", "ignore"},
     {"mbtn_right_dbl",      "ignore"},
-}, "input", "force")
-mp.enable_key_bindings("input")
+}, "thumbfast-osc-input", "force")
+mp.enable_key_bindings("thumbfast-osc-input")
 
 mp.set_key_bindings({
     {"mbtn_left",           function(e) process_event("mbtn_left", "up") end,
                             function(e) process_event("mbtn_left", "down")  end},
-}, "window-controls", "force")
-mp.enable_key_bindings("window-controls")
+}, "thumbfast-osc-window-controls", "force")
+mp.enable_key_bindings("thumbfast-osc-window-controls")
 
 function get_hidetimeout()
     if user_opts.visibility == "always" then
@@ -2918,8 +2914,8 @@ function visibility_mode(mode, no_osd)
     -- Reset the input state on a mode change. The input state will be
     -- recalculated on the next render cycle, except in 'never' mode where it
     -- will just stay disabled.
-    mp.disable_key_bindings("input")
-    mp.disable_key_bindings("window-controls")
+    mp.disable_key_bindings("thumbfast-osc-input")
+    mp.disable_key_bindings("thumbfast-osc-window-controls")
     state.input_enabled = false
 
     update_margins()
@@ -2966,5 +2962,5 @@ mp.register_script_message("thumbfast-info", function(json)
     end
 end)
 
-set_virt_mouse_area(0, 0, 0, 0, "input")
-set_virt_mouse_area(0, 0, 0, 0, "window-controls")
+set_virt_mouse_area(0, 0, 0, 0, "thumbfast-osc-input")
+set_virt_mouse_area(0, 0, 0, 0, "thumbfast-osc-window-controls")
