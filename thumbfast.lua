@@ -32,7 +32,10 @@ local options = {
     hwdec = false,
 
     -- Windows only: use native Windows API to write to pipe (requires LuaJIT)
-    direct_io = false
+    direct_io = false,
+
+    -- Custom path to the mpv executable
+    mpv_path = "mpv"
 }
 
 mp.utils = require "mp.utils"
@@ -244,9 +247,9 @@ if options.direct_io then
     end
 end
 
-local mpv_path = "mpv"
+local mpv_path = options.mpv_path
 
-if os_name == "Mac" and unique then
+if mpv_path == "mpv" and os_name == "Mac" and unique then
     mpv_path = string.gsub(subprocess({"ps", "-o", "comm=", "-p", tostring(unique)}).stdout, "[\n\r]", "")
     mpv_path = string.gsub(mpv_path, "/mpv%-bundle$", "/mpv")
 end
@@ -380,7 +383,7 @@ local function spawn(time)
             file:write(string.format(client_script, options.socket))
             file:close()
             subprocess({"chmod", "+x", client_script_path}, true)
-            table.insert(args, "--script="..client_script_path)
+            table.insert(args, "--scripts="..client_script_path)
         end
     end
 

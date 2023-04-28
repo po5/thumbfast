@@ -10,7 +10,19 @@ Place thumbfast.lua in your mpv `scripts` folder.
 Default settings are listed in thumbfast.conf, copy it to your mpv `script-opts` folder to customize.
 
 For the vanilla UI, you also have to install [osc.lua](https://github.com/po5/thumbfast/blob/vanilla-osc/player/lua/osc.lua) (identical to the mpv default, with added thumbfast support) into your `scripts` folder.  
-For third-party UIs, refer to their respective installation instructions.
+For third-party UIs, refer to their respective installation instructions. [See the list of supported UIs.](#ui-support)
+
+## Features
+No dependencies, no background thumbnail generation hogging your CPU.  
+Customizable sizes, interval between thumbnails, cropping support, respects applied video filters.  
+Supports web videos e.g. YouTube (disabled by default), mixed aspect ratio videos.
+
+This script makes an effort to run on mpv versions as old as 0.29.0.  
+Note that most custom UIs will not support vintage mpv builds, consider updating if you're having issues.
+
+## Usage
+Once the lua file is in your scripts directory, and you are using a UI that supports thumbfast, you are done.  
+Hover on the timeline for nice thumbnails.
 
 ## UI support
 - [uosc](https://github.com/tomasklaen/uosc)
@@ -22,24 +34,12 @@ For third-party UIs, refer to their respective installation instructions.
 - [oscc](https://github.com/longtermfree/oscc)
 - [mfpbar](https://codeberg.org/NRK/mpv-toolbox/src/branch/master/mfpbar)
 
-## Features
-No dependencies, no background thumbnail generation hogging your CPU.  
-Customizable sizes, interval between thumbnails, cropping support, respects applied video filters.  
-Supports web videos e.g. YouTube (disabled by default), mixed aspect ratio videos.
+## mpv frontends
+If you are using a GUI frontend such as [mpv.net](https://github.com/mpvnet-player/mpv.net), you will need [standalone mpv](https://mpv.io/installation/) accessible within [Path](https://learn.microsoft.com/en-us/previous-versions/office/developer/sharepoint-2010/ee537574(v=office.14)#to-add-a-path-to-the-path-environment-variable).  
+It will be used in the background to generate thumbnails.
 
-## Requirements
-Windows: None, works out of the box
-
-Linux: None, works out of the box
-
-Mac: None, works out of the box
-
-This script makes an effort to run on mpv versions as old as 0.29.0.  
-Note that most custom UIs will not support vintage mpv builds, consider updating if you're having issues.
-
-## Usage
-Once the lua file is in your scripts directory, and you are using a UI that supports thumbfast, you are done.  
-Hover on the timeline for nice thumbnails.
+The only exception is [ImPlay](https://tsl0922.github.io/ImPlay/), which can do thumbnailing on its own.  
+Set `mpv_path=ImPlay` in `script-opts/thumbfast.conf` and make sure it's in [Path](https://learn.microsoft.com/en-us/previous-versions/office/developer/sharepoint-2010/ee537574(v=office.14)#to-add-a-path-to-the-path-environment-variable).
 
 ## Configuration
 `socket`: On Windows, a plain string. On Linux and Mac, a directory path for temporary files. Leave empty for auto.  
@@ -50,7 +50,8 @@ Hover on the timeline for nice thumbnails.
 `network`: Enable on remote files. Defaults to no.  
 `audio`: Enable on audio files. Defaults to no.  
 `hwdec`: Enable hardware decoding. Defaults to no.  
-`direct_io`: Windows only: write directly to pipe (requires LuaJIT). Should improve performance, ymmv.
+`direct_io`: Windows only: write directly to pipe (requires LuaJIT). Should improve performance, ymmv.  
+`mpv_path`: Custom path to the mpv executable. Defaults to mpv.
 
 ## For UI developers: How to add thumbfast support to your script
 Declare the thumbfast state variable near the top of your script.  
