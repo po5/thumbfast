@@ -250,8 +250,25 @@ end
 local mpv_path = options.mpv_path
 
 if mpv_path == "mpv" and os_name == "Mac" and unique then
+    -- TODO: look into ~~osxbundle/
     mpv_path = string.gsub(subprocess({"ps", "-o", "comm=", "-p", tostring(unique)}).stdout, "[\n\r]", "")
-    mpv_path = string.gsub(mpv_path, "/mpv%-bundle$", "/mpv")
+    if mpv_path ~= "mpv" then
+        mpv_path = string.gsub(mpv_path, "/mpv%-bundle$", "/mpv")
+        local mpv_bin = mp.utils.file_info("/usr/local/mpv")
+        if mpv_bin and mpv_bin.is_file then
+            mpv_path = "/usr/local/mpv"
+        else
+            local mpv_app = mp.utils.file_info("/Applications/mpv.app/Contents/MacOS/mpv")
+            if mpv_app and mpv_app.is_file then
+                mp.msg.warn("symlink mpv to fix Dock icons: `sudo ln -s /Applications/mpv.app/Contents/MacOS/mpv /usr/local/mpv`")
+            --elseif string.match(mpv_path, "^/private/") then
+            --    mp.msg.warn("symlink mpv to fix Dock icons: `sudo ln -s 'PATH_TO_MPV_INSTALL_DIR/mpv.app/Contents/MacOS/mpv' /usr/local/mpv`")
+            else
+            --    mp.msg.warn("symlink mpv to fix Dock icons: `sudo ln -s '"..mpv_path.."' /usr/local/mpv`")
+                mp.msg.warn("drag to your Applications folder and symlink mpv to fix Dock icons: `sudo ln -s /Applications/mpv.app/Contents/MacOS/mpv /usr/local/mpv`")
+            end
+        end
+    end
 end
 
 local function vf_string(filters, full)
@@ -369,6 +386,10 @@ local function spawn(time)
 
     if not pre_0_30_0 then
         table.insert(args, "--sws-allow-zimg=no")
+    end
+
+    if os_name == "Mac" and mp.get_property("macos-app-activation-policy") then
+        table.insert(args, "--macos-app-activation-policy=accessory")
     end
 
     if os_name == "Windows" then

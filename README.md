@@ -41,6 +41,11 @@ It will be used in the background to generate thumbnails.
 The only exception is [ImPlay](https://tsl0922.github.io/ImPlay/), which can do thumbnailing on its own.  
 Set `mpv_path=ImPlay` in `script-opts/thumbfast.conf` and make sure it's in [Path](https://learn.microsoft.com/en-us/previous-versions/office/developer/sharepoint-2010/ee537574(v=office.14)#to-add-a-path-to-the-path-environment-variable).
 
+## MacOS
+If your mpv install is an app bundle (e.g. stolendata builds), the script will work but you may notice the Dock shakes when generating the first thumbnail.  
+To get rid of the shaking, make sure the app is in your Applications folder, then run: `sudo ln -s /Applications/mpv.app/Contents/MacOS/mpv /usr/local/mpv`  
+If you installed mpv via [Homebrew](https://brew.sh/), there are no issues.
+
 ## Configuration
 `socket`: On Windows, a plain string. On Linux and Mac, a directory path for temporary files. Leave empty for auto.  
 `thumbnail`: Path for the temporary thumbnail file (must not be a directory). Leave empty for auto.  
