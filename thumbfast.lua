@@ -436,12 +436,12 @@ local function run(command)
         return
     end
 
-    local file = nil
     if os_name == "Windows" then
-        file = io.open("\\\\.\\pipe\\"..options.socket, "r+")
-    else
-        file = io.open(options.socket, "r+")
+        subprocess({"cmd", "/c", "echo "..command.." > \\\\.\\pipe\\" .. options.socket}, true)
+        return
     end
+
+    local file = io.open(options.socket, "r+")
     if file ~= nil then
         file:seek("end")
         file:write(command.."\n")
