@@ -17,8 +17,9 @@ No dependencies, no background thumbnail generation hogging your CPU.
 Customizable sizes, interval between thumbnails, cropping support, respects applied video filters.  
 Supports web videos e.g. YouTube (disabled by default), mixed aspect ratio videos.
 
-This script makes an effort to run on mpv versions as old as 0.29.0.  
-Note that most custom UIs will not support vintage mpv builds, consider updating if you're having issues.
+This script makes an effort to run on mpv versions as old as 0.29.0 (Windows, Linux) and 0.33.0 (Mac).  
+Note that most custom UIs will not support vintage mpv builds, update before submitting an issue and mention if behavior is the same.  
+Support for <0.33.0 on Linux requires socat.
 
 ## Usage
 Once the lua file is in your scripts directory, and you are using a UI that supports thumbfast, you are done.  

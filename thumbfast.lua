@@ -43,6 +43,7 @@ mp.options = require "mp.options"
 mp.options.read_options(options, "thumbfast")
 
 local pre_0_30_0 = mp.command_native_async == nil
+local pre_0_33_0 = true
 
 function subprocess(args, async, callback)
     callback = callback or function() end
@@ -392,7 +393,7 @@ local function spawn(time)
         table.insert(args, "--macos-app-activation-policy=accessory")
     end
 
-    if os_name == "Windows" then
+    if os_name == "Windows" or pre_0_33_0 then
         table.insert(args, "--input-ipc-server="..options.socket)
     else
         local client_script_path = options.socket..".run"
@@ -439,6 +440,9 @@ local function run(command)
     local file = nil
     if os_name == "Windows" then
         file = io.open("\\\\.\\pipe\\"..options.socket, "r+")
+    elseif pre_0_33_0 then
+        subprocess({"/usr/bin/env", "sh", "-c", "echo '" .. command .. "' | socat - " .. options.socket})
+        return
     else
         file = io.open(options.socket, "r+")
     end
@@ -722,5 +726,9 @@ mp.register_script_message("clear", clear)
 
 mp.register_event("file-loaded", file_load)
 mp.register_event("shutdown", shutdown)
+
+mp.add_hook("on_before_start_file", 0, function()
+    pre_0_33_0 = false
+end)
 
 mp.register_idle(watch_changes)
