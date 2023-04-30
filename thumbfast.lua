@@ -374,7 +374,7 @@ local function spawn(time)
     has_vid = vid or 0
 
     local args = {
-        mpv_path, path, "--no-config", "--msg-level=all=no", "--idle", "--pause", "--keep-open=always", "--really-quiet", "--no-terminal",
+        mpv_path, "--no-config", "--msg-level=all=no", "--idle", "--pause", "--keep-open=always", "--really-quiet", "--no-terminal",
         "--edition="..(mp.get_property_number("edition") or "auto"), "--vid="..(vid or "auto"), "--no-sub", "--no-audio",
         "--start="..time, "--hr-seek=no",
         "--ytdl-format=worst", "--demuxer-readahead-secs=0", "--demuxer-max-bytes=128KiB",
@@ -408,6 +408,9 @@ local function spawn(time)
             table.insert(args, "--scripts="..client_script_path)
         end
     end
+
+    table.insert(args, "--")
+    table.insert(args, path)
 
     spawned = true
     spawn_waiting = true
