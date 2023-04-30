@@ -95,6 +95,11 @@ local osc_styles = {
     wcBar = "{\\1c&H000000}",
 }
 
+local function create_osd_overlay(...)
+    if not mp.create_osd_overlay then return end
+    return mp.create_osd_overlay(...)
+end
+
 -- internal states, do not touch
 local state = {
     showtime,                               -- time of last invocation (last mouse move)
@@ -128,7 +133,7 @@ local state = {
     using_video_margins = false,
     border = true,
     maximized = false,
-    osd = mp.create_osd_overlay("ass-events"),
+    osd = create_osd_overlay("ass-events"),
     chapter_list = {},                      -- sorted by time
 }
 
@@ -165,6 +170,8 @@ function set_osd(res_x, res_y, text)
     state.osd.z = 1000
     state.osd:update()
 end
+
+set_osd = state.osd and set_osd or mp.set_osd_ass
 
 local margins_opts = {
     {"l", "video-margin-ratio-left"},
@@ -327,19 +334,102 @@ function ass_append_alpha(ass, alpha, modifier)
                ar[1], ar[2], ar[3], ar[4]))
 end
 
+local c = 0.551915024494 -- circle approximation
+
+function hexagon_cw(ass, x0, y0, x1, y1, r1, r2)
+    if r2 == nil then
+        r2 = r1
+    end
+    ass:move_to(x0 + r1, y0)
+    if x0 ~= x1 then
+        ass:line_to(x1 - r2, y0)
+    end
+    ass:line_to(x1, y0 + r2)
+    if x0 ~= x1 then
+        ass:line_to(x1 - r2, y1)
+    end
+    ass:line_to(x0 + r1, y1)
+    ass:line_to(x0, y0 + r1)
+end
+
+function hexagon_ccw(ass, x0, y0, x1, y1, r1, r2)
+    if r2 == nil then
+        r2 = r1
+    end
+    ass:move_to(x0 + r1, y0)
+    ass:line_to(x0, y0 + r1)
+    ass:line_to(x0 + r1, y1)
+    if x0 ~= x1 then
+        ass:line_to(x1 - r2, y1)
+    end
+    ass:line_to(x1, y0 + r2)
+    if x0 ~= x1 then
+        ass:line_to(x1 - r2, y0)
+    end
+end
+
+function round_rect_cw(ass, x0, y0, x1, y1, r1, r2)
+    if r2 == nil then
+        r2 = r1
+    end
+    local c1 = c * r1 -- circle approximation
+    local c2 = c * r2 -- circle approximation
+    ass:move_to(x0 + r1, y0)
+    ass:line_to(x1 - r2, y0) -- top line
+    if r2 > 0 then
+        ass:bezier_curve(x1 - r2 + c2, y0, x1, y0 + r2 - c2, x1, y0 + r2) -- top right corner
+    end
+    ass:line_to(x1, y1 - r2) -- right line
+    if r2 > 0 then
+        ass:bezier_curve(x1, y1 - r2 + c2, x1 - r2 + c2, y1, x1 - r2, y1) -- bottom right corner
+    end
+    ass:line_to(x0 + r1, y1) -- bottom line
+    if r1 > 0 then
+        ass:bezier_curve(x0 + r1 - c1, y1, x0, y1 - r1 + c1, x0, y1 - r1) -- bottom left corner
+    end
+    ass:line_to(x0, y0 + r1) -- left line
+    if r1 > 0 then
+        ass:bezier_curve(x0, y0 + r1 - c1, x0 + r1 - c1, y0, x0 + r1, y0) -- top left corner
+    end
+end
+
+function round_rect_ccw(ass, x0, y0, x1, y1, r1, r2)
+    if r2 == nil then
+        r2 = r1
+    end
+    local c1 = c * r1 -- circle approximation
+    local c2 = c * r2 -- circle approximation
+    ass:move_to(x0 + r1, y0)
+    if r1 > 0 then
+        ass:bezier_curve(x0 + r1 - c1, y0, x0, y0 + r1 - c1, x0, y0 + r1) -- top left corner
+    end
+    ass:line_to(x0, y1 - r1) -- left line
+    if r1 > 0 then
+        ass:bezier_curve(x0, y1 - r1 + c1, x0 + r1 - c1, y1, x0 + r1, y1) -- bottom left corner
+    end
+    ass:line_to(x1 - r2, y1) -- bottom line
+    if r2 > 0 then
+        ass:bezier_curve(x1 - r2 + c2, y1, x1, y1 - r2 + c2, x1, y1 - r2) -- bottom right corner
+    end
+    ass:line_to(x1, y0 + r2) -- right line
+    if r2 > 0 then
+        ass:bezier_curve(x1, y0 + r2 - c2, x1 - r2 + c2, y0, x1 - r2, y0) -- top right corner
+    end
+end
+
 function ass_draw_rr_h_cw(ass, x0, y0, x1, y1, r1, hexagon, r2)
     if hexagon then
-        ass:hexagon_cw(x0, y0, x1, y1, r1, r2)
+        hexagon_cw(ass, x0, y0, x1, y1, r1, r2)
     else
-        ass:round_rect_cw(x0, y0, x1, y1, r1, r2)
+        round_rect_cw(ass, x0, y0, x1, y1, r1, r2)
     end
 end
 
 function ass_draw_rr_h_ccw(ass, x0, y0, x1, y1, r1, hexagon, r2)
     if hexagon then
-        ass:hexagon_ccw(x0, y0, x1, y1, r1, r2)
+        hexagon_ccw(ass, x0, y0, x1, y1, r1, r2)
     else
-        ass:round_rect_ccw(x0, y0, x1, y1, r1, r2)
+        round_rect_ccw(ass, x0, y0, x1, y1, r1, r2)
     end
 end
 
@@ -2238,14 +2328,18 @@ function update_margins()
         reset_margins()
     end
 
+    if utils.shared_script_property_set then
     utils.shared_script_property_set("osc-margins",
         string.format("%f,%f,%f,%f", margins.l, margins.r, margins.t, margins.b))
+    end
     mp.set_property_native("user-data/osc/margins", margins)
 end
 
 function shutdown()
     reset_margins()
+    if utils.shared_script_property_set then
     utils.shared_script_property_set("osc-margins", nil)
+    end
     if mp.del_property then
     mp.del_property("user-data/osc")
     end
@@ -2350,8 +2444,12 @@ end
 
 function render_wipe()
     msg.trace("render_wipe()")
+    if state.osd then
     state.osd.data = "" -- allows set_osd to immediately update on enable
     state.osd:remove()
+    else
+    set_osd(0, 0, "{}")
+    end
 end
 
 function render()
@@ -2904,7 +3002,9 @@ function visibility_mode(mode, no_osd)
     end
 
     user_opts.visibility = mode
+    if utils.shared_script_property_set then
     utils.shared_script_property_set("osc-visibility", mode)
+    end
     mp.set_property_native("user-data/osc/visibility", mode)
 
     if not no_osd and tonumber(mp.get_property("osd-level")) >= 1 then
@@ -2937,7 +3037,9 @@ function idlescreen_visibility(mode, no_osd)
         user_opts.idlescreen = false
     end
 
+    if utils.shared_script_property_set then
     utils.shared_script_property_set("osc-idlescreen", mode)
+    end
     mp.set_property_native("user-data/osc/idlescreen", user_opts.idlescreen)
 
     if not no_osd and tonumber(mp.get_property("osd-level")) >= 1 then
