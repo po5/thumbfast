@@ -2367,6 +2367,9 @@ end
 
 function hide_osc()
     msg.trace("hide_osc")
+    if thumbfast.width ~= 0 and thumbfast.height ~= 0 then
+        mp.commandv("script-message-to", "thumbfast", "clear")
+    end
     if not state.enabled then
         -- typically hide happens at render() from tick(), but now tick() is
         -- no-op and won't render again to remove the osc, so do that manually.
