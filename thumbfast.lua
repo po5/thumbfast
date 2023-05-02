@@ -118,7 +118,9 @@ end
 local spawned = false
 local network = false
 local disabled = false
+local force_disabled = false
 local spawn_waiting = false
+local spawn_working = false
 
 local dirty = false
 
@@ -218,6 +220,7 @@ local function get_os()
 end
 
 local os_name = get_os()
+local path_separator = os_name == "Windows" and "\\" or "/"
 
 if options.socket == "" then
     if os_name == "Windows" then
@@ -251,6 +254,7 @@ if options.direct_io then
 end
 
 local mpv_path = options.mpv_path
+local libmpv = false
 
 if mpv_path == "mpv" and os_name == "Mac" and unique then
     -- TODO: look into ~~osxbundle/
@@ -264,10 +268,7 @@ if mpv_path == "mpv" and os_name == "Mac" and unique then
             local mpv_app = mp.utils.file_info("/Applications/mpv.app/Contents/MacOS/mpv")
             if mpv_app and mpv_app.is_file then
                 mp.msg.warn("symlink mpv to fix Dock icons: `sudo ln -s /Applications/mpv.app/Contents/MacOS/mpv /usr/local/mpv`")
-            --elseif string.match(mpv_path, "^/private/") then
-            --    mp.msg.warn("symlink mpv to fix Dock icons: `sudo ln -s 'PATH_TO_MPV_INSTALL_DIR/mpv.app/Contents/MacOS/mpv' /usr/local/mpv`")
             else
-            --    mp.msg.warn("symlink mpv to fix Dock icons: `sudo ln -s '"..mpv_path.."' /usr/local/mpv`")
                 mp.msg.warn("drag to your Applications folder and symlink mpv to fix Dock icons: `sudo ln -s /Applications/mpv.app/Contents/MacOS/mpv /usr/local/mpv`")
             end
         end
@@ -336,7 +337,8 @@ local function info(w, h)
         has_vid == 0 or
         (network and not options.network) or
         (albumart and not options.audio) or
-        (image and not albumart)
+        (image and not albumart) or
+        force_disabled
 
     if info_timer then
         info_timer:kill()
@@ -420,9 +422,42 @@ local function spawn(time)
     subprocess(args, true,
         function(success, result)
             if spawn_waiting and (success == false or result.status ~= 0) then
+                spawned = false
+                spawn_waiting = false
                 mp.msg.error("mpv subprocess create failed")
+                if not spawn_working then -- notify users of required configuration
+                    if options.mpv_path == "mpv" then
+                        if libmpv then
+                            if options.mpv_path == mpv_path then -- attempt to locate ImPlay
+                                mpv_path = "ImPlay"
+                                spawn(time)
+                            else -- ImPlay not in path
+                                if os_name ~= "Mac" then
+                                    force_disabled = true
+                                    info(real_w or effective_w, real_h or effective_h)
+                                end
+                                mp.commandv("show-text", "thumbfast: ERROR! cannot create mpv subprocess", 5000)
+                                mp.commandv("script-message-to", "implay", "show-message", "thumbfast initial setup", "Set mpv_path=PATH_TO_ImPlay in thumbfast config:\n" .. string.gsub(mp.command_native({"expand-path", "~~/script-opts/thumbfast.conf"}), "[/\\]", path_separator).."\nand restart ImPlay")
+                            end
+                        else
+                            mp.commandv("show-text", "thumbfast: ERROR! cannot create mpv subprocess", 5000)
+                            if os_name == "Windows" then
+                                mp.commandv("script-message-to", "mpvnet", "show-text", "thumbfast: ERROR! install standalone mpv, see README", 5000, 20)
+                                mp.commandv("script-message", "mpv.net", "show-text", "thumbfast: ERROR! install standalone mpv, see README", 5000, 20)
+                            end
+                        end
+                    else
+                        mp.commandv("show-text", "thumbfast: ERROR! cannot create mpv subprocess", 5000)
+                        -- found ImPlay but not defined in config
+                        mp.commandv("script-message-to", "implay", "show-message", "thumbfast", "Set mpv_path=PATH_TO_ImPlay in thumbfast config:\n" .. string.gsub(mp.command_native({"expand-path", "~~/script-opts/thumbfast.conf"}), "[/\\]", path_separator).."\nand restart ImPlay")
+                    end
+                end
+            elseif success == true and result.status == 0 then
+                if not spawn_working and libmpv and options.mpv_path ~= mpv_path then
+                    mp.commandv("script-message-to", "implay", "show-message", "thumbfast initial setup", "Set mpv_path=ImPlay in thumbfast config:\n" .. string.gsub(mp.command_native({"expand-path", "~~/script-opts/thumbfast.conf"}), "[/\\]", path_separator).."\nand restart ImPlay")
+                end
+                spawn_working = true
             end
-            spawned = false
         end
     )
 end
@@ -693,6 +728,7 @@ local function mark_dirty()
 end
 
 local function file_load()
+    libmpv = mp.get_property("current-vo") == "libmpv"
     clear()
     real_w, real_h = nil, nil
     last_real_w, last_real_h = nil, nil
