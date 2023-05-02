@@ -516,22 +516,20 @@ local seek_period_counter = 0
 local seek_timer
 seek_timer = mp.add_periodic_timer(seek_period, function()
     if seek_period_counter == 0 then
-        seek(true)
+        seek(allow_fast_seek)
         seek_period_counter = 1
     else
         if seek_period_counter == 2 then
-            seek_timer:kill()
-            seek()
+            if allow_fast_seek then
+                seek_timer:kill()
+                seek()
+            end
         else seek_period_counter = seek_period_counter + 1 end
     end
 end)
 seek_timer:kill()
 
 local function request_seek()
-    if not allow_fast_seek then
-        seek()
-        return
-    end
     if seek_timer:is_enabled() then
         seek_period_counter = 0
     else
