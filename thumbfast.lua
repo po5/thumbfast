@@ -422,7 +422,7 @@ local function spawn(time)
 
     subprocess(args, true,
         function(success, result)
-            if spawn_waiting and (success == false or result.status ~= 0) then
+            if spawn_waiting and (success == false or (result.status ~= 0 and result.status ~= -2)) then
                 spawned = false
                 spawn_waiting = false
                 mp.msg.error("mpv subprocess create failed")
@@ -453,7 +453,7 @@ local function spawn(time)
                         mp.commandv("script-message-to", "implay", "show-message", "thumbfast", "Set mpv_path=PATH_TO_ImPlay in thumbfast config:\n" .. string.gsub(mp.command_native({"expand-path", "~~/script-opts/thumbfast.conf"}), "[/\\]", path_separator).."\nand restart ImPlay")
                     end
                 end
-            elseif success == true and result.status == 0 then
+            elseif success == true and (result.status == 0 or result.status == -2) then
                 if not spawn_working and libmpv and options.mpv_path ~= mpv_path then
                     mp.commandv("script-message-to", "implay", "show-message", "thumbfast initial setup", "Set mpv_path=ImPlay in thumbfast config:\n" .. string.gsub(mp.command_native({"expand-path", "~~/script-opts/thumbfast.conf"}), "[/\\]", path_separator).."\nand restart ImPlay")
                 end
