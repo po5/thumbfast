@@ -458,6 +458,7 @@ local function spawn(time)
                     mp.commandv("script-message-to", "implay", "show-message", "thumbfast initial setup", "Set mpv_path=ImPlay in thumbfast config:\n" .. string.gsub(mp.command_native({"expand-path", "~~/script-opts/thumbfast.conf"}), "[/\\]", path_separator).."\nand restart ImPlay")
                 end
                 spawn_working = true
+                spawn_waiting = false
             end
         end
     )
@@ -640,7 +641,7 @@ end
 local function clear()
     file_timer:kill()
     seek_timer:kill()
-    last_seek = 0
+    last_seek_time = 0
     show_thumbnail = false
     last_x = nil
     last_y = nil
