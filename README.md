@@ -37,10 +37,11 @@ Hover on the timeline for nice thumbnails.
 
 ## mpv frontends
 If you are using a GUI frontend such as [mpv.net](https://github.com/mpvnet-player/mpv.net), you will need [standalone mpv](https://mpv.io/installation/) accessible within [Path](https://learn.microsoft.com/en-us/previous-versions/office/developer/sharepoint-2010/ee537574(v=office.14)#to-add-a-path-to-the-path-environment-variable).  
+The easiest way is to copy standalone mpv files inside of your mpv.net installation folder.  
 It will be used in the background to generate thumbnails.
 
 The only exception is [ImPlay](https://tsl0922.github.io/ImPlay/), which can do thumbnailing on its own.  
-Set `mpv_path=ImPlay` in `script-opts/thumbfast.conf` and make sure it's in [Path](https://learn.microsoft.com/en-us/previous-versions/office/developer/sharepoint-2010/ee537574(v=office.14)#to-add-a-path-to-the-path-environment-variable).
+Set `mpv_path=ImPlay` in `script-opts/thumbfast.conf`.
 
 ## MacOS
 If your mpv install is an app bundle (e.g. stolendata builds), the script will work but you may notice the Dock shakes when generating the first thumbnail.  
