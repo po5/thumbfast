@@ -160,7 +160,6 @@ local has_vid = 0
 
 local file_timer = nil
 local file_check_period = 1/60
-local first_file = false
 
 local allow_fast_seek = true
 
@@ -586,10 +585,6 @@ local function check_new_thumb()
     local finfo = mp.utils.file_info(tmp)
     if not finfo then return false end
     spawn_waiting = false
-    if first_file then
-        request_seek()
-        first_file = false
-    end
     local w, h = real_res(effective_w, effective_h, finfo.size)
     if w then -- only accept valid thumbnails
         move_file(tmp, options.thumbnail..".bgra")
@@ -747,7 +742,6 @@ local function file_load()
     spawned = false
     if options.spawn_first then
         spawn(mp.get_property_number("time-pos", 0))
-        first_file = true
     end
 end
 
