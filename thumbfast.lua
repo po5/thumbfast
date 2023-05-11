@@ -115,6 +115,7 @@ if options.direct_io then
     end
 end
 
+local file = nil
 local spawned = false
 local network = false
 local disabled = false
@@ -356,6 +357,10 @@ local function info(w, h)
 end
 
 local function remove_thumbnail_files()
+    if file then
+        file:close()
+        file = nil
+    end
     os.remove(options.thumbnail)
     os.remove(options.thumbnail..".bgra")
 end
@@ -483,19 +488,19 @@ local function run(command)
         return
     end
 
-    local file = nil
     if os_name == "Windows" then
-        file = io.open("\\\\.\\pipe\\"..options.socket, "r+")
+        if file == nil then
+            file = io.open("\\\\.\\pipe\\"..options.socket, "r+")
+        end
     elseif pre_0_33_0 then
         subprocess({"/usr/bin/env", "sh", "-c", "echo '" .. command .. "' | socat - " .. options.socket})
         return
-    else
+    elseif file == nil then
         file = io.open(options.socket, "r+")
     end
     if file ~= nil then
         file:seek("end")
         file:write(command.."\n")
-        file:close()
     end
 end
 
