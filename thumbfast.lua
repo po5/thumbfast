@@ -353,7 +353,11 @@ local function info(w, h)
     end
 
     local json, err = mp.utils.format_json({width=display_w, height=display_h, disabled=disabled, available=true, socket=options.socket, thumbnail=options.thumbnail, overlay_id=options.overlay_id})
-    mp.commandv("script-message", "thumbfast-info", json)
+    if pre_0_30_0 then
+        mp.command_native({"script-message", "thumbfast-info", json})
+    else
+        mp.command_native_async({"script-message", "thumbfast-info", json}, function() end)
+    end
 end
 
 local function remove_thumbnail_files()
@@ -512,7 +516,11 @@ local function draw(w, h, script)
     end
 
     if x ~= nil then
-        mp.command_native({"overlay-add", options.overlay_id, x, y, options.thumbnail..".bgra", 0, "bgra", display_w, display_h, (4*display_w)})
+        if pre_0_30_0 then
+            mp.command_native({"overlay-add", options.overlay_id, x, y, options.thumbnail..".bgra", 0, "bgra", display_w, display_h, (4*display_w)})
+        else
+            mp.command_native_async({"overlay-add", options.overlay_id, x, y, options.thumbnail..".bgra", 0, "bgra", display_w, display_h, (4*display_w)}, function() end)
+        end
     elseif script then
         local json, err = mp.utils.format_json({width=display_w, height=display_h, x=x, y=y, socket=options.socket, thumbnail=options.thumbnail, overlay_id=options.overlay_id})
         mp.commandv("script-message-to", script, "thumbfast-render", json)
@@ -651,7 +659,11 @@ local function clear()
     last_x = nil
     last_y = nil
     if script_name then return end
-    mp.command_native({"overlay-remove", options.overlay_id})
+    if pre_0_30_0 then
+        mp.command_native({"overlay-remove", options.overlay_id})
+    else
+        mp.command_native_async({"overlay-remove", options.overlay_id}, function() end)
+    end
 end
 
 local function watch_changes()
