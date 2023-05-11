@@ -360,7 +360,7 @@ local function remove_thumbnail_files()
     os.remove(options.thumbnail..".bgra")
 end
 
-local function spawn(time)
+local function spawn(time, respawn)
     if disabled then return end
 
     local path = mp.get_property("path")
@@ -641,7 +641,7 @@ end
 local function clear()
     file_timer:kill()
     seek_timer:kill()
-    last_seek_time = 0
+    last_seek_time = nil
     show_thumbnail = false
     last_x = nil
     last_y = nil
@@ -676,10 +676,11 @@ local function watch_changes()
     if spawned then
         if resized then
             -- mpv doesn't allow us to change output size
+            local seek_time = last_seek_time
             run("quit")
             clear()
             spawned = false
-            spawn(last_seek_time or mp.get_property_number("time-pos", 0))
+            spawn(seek_time or mp.get_property_number("time-pos", 0), true)
         else
             if rotate ~= last_rotate then
                 run("set video-rotate "..rotate)
