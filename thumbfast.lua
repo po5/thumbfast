@@ -42,6 +42,7 @@ mp.utils = require "mp.utils"
 mp.options = require "mp.options"
 mp.options.read_options(options, "thumbfast")
 
+local properties = {}
 local pre_0_30_0 = mp.command_native_async == nil
 local pre_0_33_0 = true
 
@@ -144,8 +145,8 @@ local script_name = nil
 
 local show_thumbnail = false
 
-local filters_reset = {["lavfi-crop"]=true, crop=true}
-local filters_runtime = {hflip=true, vflip=true}
+local filters_reset = {["lavfi-crop"]=true, ["crop"]=true}
+local filters_runtime = {["hflip"]=true, ["vflip"]=true}
 local filters_all = filters_runtime
 for k,v in pairs(filters_reset) do filters_all[k] = v end
 
@@ -278,9 +279,9 @@ end
 
 local function vf_string(filters, full)
     local vf = ""
-    local vf_table = mp.get_property_native("vf")
+    local vf_table = properties["vf"]
 
-    if #vf_table > 0 then
+    if vf_table and #vf_table > 0 then
         for i = #vf_table, 1, -1 do
             if filters[vf_table[i].name] then
                 local args = ""
@@ -303,11 +304,11 @@ local function vf_string(filters, full)
 end
 
 local function calc_dimensions()
-    local width = mp.get_property_number("video-out-params/dw")
-    local height = mp.get_property_number("video-out-params/dh")
+    local width = properties["video-out-params"] and properties["video-out-params"]["dw"]
+    local height = properties["video-out-params"] and properties["video-out-params"]["dh"]
     if not width or not height then return end
 
-    local scale = mp.get_property_number("display-hidpi-scale", 1)
+    local scale = properties["display-hidpi-scale"] or 1
 
     if width / height > options.max_width / options.max_height then
         effective_w = math.floor(options.max_width * scale + 0.5)
@@ -317,7 +318,7 @@ local function calc_dimensions()
         effective_w = math.floor(width / height * effective_h + 0.5)
     end
 
-    local v_par = mp.get_property_number("video-out-params/par", 1)
+    local v_par = properties["video-out-params"] and properties["video-out-params"]["par"] or 1
     if v_par == 1 then
         par = ":force_original_aspect_ratio=decrease"
     else
@@ -328,15 +329,13 @@ end
 local info_timer = nil
 
 local function info(w, h)
-    local display_w, display_h = w, h
-    local rotate = mp.get_property_number("video-params/rotate")
+    local rotate = properties["video-params"] and properties["video-params"]["rotate"]
+    local image = properties["current-tracks"] and properties["current-tracks"]["video"] and properties["current-tracks"]["video"]["image"]
+    local albumart = image and properties["current-tracks"]["video"]["albumart"]
 
-    network = mp.get_property_bool("demuxer-via-network", false)
-    local image = mp.get_property_native("current-tracks/video/image", false)
-    local albumart = image and mp.get_property_native("current-tracks/video/albumart", false)
     disabled = (w or 0) == 0 or (h or 0) == 0 or
         has_vid == 0 or
-        (network and not options.network) or
+        (properties["demuxer-via-network"] and not options.network) or
         (albumart and not options.audio) or
         (image and not albumart) or
         force_disabled
@@ -348,11 +347,7 @@ local function info(w, h)
         info_timer = mp.add_timeout(0.05, function() info(w, h) end)
     end
 
-    if rotate ~= nil and rotate % 180 == 90 then
-        display_w, display_h = h, w
-    end
-
-    local json, err = mp.utils.format_json({width=display_w, height=display_h, disabled=disabled, available=true, socket=options.socket, thumbnail=options.thumbnail, overlay_id=options.overlay_id})
+    local json, err = mp.utils.format_json({width=w, height=h, disabled=disabled, available=true, socket=options.socket, thumbnail=options.thumbnail, overlay_id=options.overlay_id})
     if pre_0_30_0 then
         mp.command_native({"script-message", "thumbfast-info", json})
     else
@@ -372,10 +367,10 @@ end
 local function spawn(time, respawn)
     if disabled then return end
 
-    local path = mp.get_property("path")
+    local path = properties["path"]
     if path == nil then return end
 
-    local open_filename = mp.get_property("stream-open-filename")
+    local open_filename = properties["stream-open-filename"]
     local ytdl = open_filename and network and path ~= open_filename
     if ytdl then
         path = open_filename
@@ -383,13 +378,13 @@ local function spawn(time, respawn)
 
     remove_thumbnail_files()
 
-    local vid = mp.get_property_number("vid")
+    local vid = properties["vid"]
     has_vid = vid or 0
 
     local args = {
         mpv_path, "--no-config", "--msg-level=all=no", "--idle", "--pause", "--keep-open=always", "--really-quiet", "--no-terminal",
         "--load-scripts=no", "--osc=no", "--ytdl=no", "--load-stats-overlay=no", "--load-osd-console=no", "--load-auto-profiles=no",
-        "--edition="..(mp.get_property_number("edition") or "auto"), "--vid="..(vid or "auto"), "--no-sub", "--no-audio",
+        "--edition="..(properties["edition"] or "auto"), "--vid="..(vid or "auto"), "--no-sub", "--no-audio",
         "--start="..time, allow_fast_seek and "--hr-seek=no" or "--hr-seek=yes",
         "--ytdl-format=worst", "--demuxer-readahead-secs=0", "--demuxer-max-bytes=128KiB",
         "--vd-lavc-skiploopfilter=all", "--vd-lavc-software-fallback=1", "--vd-lavc-fast", "--vd-lavc-threads=2", "--hwdec="..(options.hwdec and "auto" or "no"),
@@ -403,7 +398,7 @@ local function spawn(time, respawn)
         table.insert(args, "--sws-allow-zimg=no")
     end
 
-    if os_name == "Mac" and mp.get_property("macos-app-activation-policy") then
+    if os_name == "Mac" and properties["macos-app-activation-policy"] then
         table.insert(args, "--macos-app-activation-policy=accessory")
     end
 
@@ -510,19 +505,14 @@ end
 
 local function draw(w, h, script)
     if not w or not show_thumbnail then return end
-    local display_w, display_h = w, h
-    if mp.get_property_number("video-params/rotate", 0) % 180 == 90 then
-        display_w, display_h = h, w
-    end
-
     if x ~= nil then
         if pre_0_30_0 then
-            mp.command_native({"overlay-add", options.overlay_id, x, y, options.thumbnail..".bgra", 0, "bgra", display_w, display_h, (4*display_w)})
+            mp.command_native({"overlay-add", options.overlay_id, x, y, options.thumbnail..".bgra", 0, "bgra", w, h, (4*w)})
         else
-            mp.command_native_async({"overlay-add", options.overlay_id, x, y, options.thumbnail..".bgra", 0, "bgra", display_w, display_h, (4*display_w)}, function() end)
+            mp.command_native_async({"overlay-add", options.overlay_id, x, y, options.thumbnail..".bgra", 0, "bgra", w, h, (4*w)}, function() end)
         end
     elseif script then
-        local json, err = mp.utils.format_json({width=display_w, height=display_h, x=x, y=y, socket=options.socket, thumbnail=options.thumbnail, overlay_id=options.overlay_id})
+        local json, err = mp.utils.format_json({width=w, height=h, x=x, y=y, socket=options.socket, thumbnail=options.thumbnail, overlay_id=options.overlay_id})
         mp.commandv("script-message-to", script, "thumbfast-render", json)
     end
 end
@@ -530,6 +520,10 @@ end
 local function real_res(req_w, req_h, filesize)
     local count = filesize / 4
     local diff = (req_w * req_h) - count
+
+    if (properties["video-params"] and properties["video-params"]["rotate"] or 0) % 180 == 90 then
+        req_w, req_h = req_h, req_w
+    end
 
     if diff == 0 then
         return req_w, req_h
@@ -614,6 +608,7 @@ local function check_new_thumb()
         end
         return true
     end
+
     return false
 end
 
@@ -668,6 +663,9 @@ end
 
 local function watch_changes()
     if not dirty then return end
+    dirty = false
+
+    if not properties["video-out-params"] then return end
 
     local old_w = effective_w
     local old_h = effective_h
@@ -675,7 +673,7 @@ local function watch_changes()
     calc_dimensions()
 
     local vf_reset = vf_string(filters_reset)
-    local rotate = mp.get_property_number("video-rotate", 0)
+    local rotate = properties["video-rotate"] or 0
 
     local resized = old_w ~= effective_w or
         old_h ~= effective_h or
@@ -716,10 +714,30 @@ local function watch_changes()
     last_rotate = rotate
     last_par = par
     last_has_vid = has_vid
-    dirty = false
+end
+
+local function update_property(name, value)
+    properties[name] = value
+end
+
+local function update_property_dirty(name, value)
+    properties[name] = value
+    dirty = true
+end
+
+local function update_tracklist(name, value)
+    -- current-tracks shim
+    for _, track in ipairs(value) do
+        if track.type == "video" and track.selected then
+            properties["current-tracks/video/image"] = track.image
+            properties["current-tracks/video/albumart"] = track.albumart
+            return
+        end
+    end
 end
 
 local function sync_changes(prop, val)
+    update_property(prop, val)
     if val == nil then return end
 
     if type(val) == "boolean" then
@@ -743,12 +761,7 @@ local function sync_changes(prop, val)
     dirty = true
 end
 
-local function mark_dirty()
-    dirty = true
-end
-
 local function file_load()
-    libmpv = mp.get_property("current-vo") == "libmpv"
     clear()
     real_w, real_h = nil, nil
     last_real_w, last_real_h = nil, nil
@@ -762,6 +775,7 @@ local function file_load()
     info(effective_w, effective_h)
     if disabled then return end
 
+    libmpv = properties["current-vo"] == "libmpv"
     spawned = false
     if options.spawn_first then
         spawn(mp.get_property_number("time-pos", 0))
@@ -781,9 +795,25 @@ local function on_duration(prop, val)
     allow_fast_seek = (val or 30) >= 30
 end
 
-mp.observe_property("display-hidpi-scale", "native", mark_dirty)
-mp.observe_property("video-out-params", "native", mark_dirty)
-mp.observe_property("vf", "native", mark_dirty)
+mp.observe_property("current-tracks", "native", function(name, value)
+    if pre_0_33_0 then
+        mp.unobserve_property(update_tracklist)
+        pre_0_33_0 = false
+    end
+    update_property(name, value)
+end)
+
+mp.observe_property("track-list", "native", update_tracklist)
+mp.observe_property("display-hidpi-scale", "native", update_property_dirty)
+mp.observe_property("video-out-params", "native", update_property_dirty)
+mp.observe_property("video-params", "native", update_property_dirty)
+mp.observe_property("vf", "native", update_property_dirty)
+mp.observe_property("demuxer-via-network", "native", update_property)
+mp.observe_property("stream-open-filename", "native", update_property)
+mp.observe_property("macos-app-activation-policy", "native", update_property)
+mp.observe_property("current-vo", "native", update_property)
+mp.observe_property("video-rotate", "native", update_property)
+mp.observe_property("path", "native", update_property)
 mp.observe_property("vid", "native", sync_changes)
 mp.observe_property("edition", "native", sync_changes)
 mp.observe_property("duration", "native", on_duration)
@@ -793,9 +823,5 @@ mp.register_script_message("clear", clear)
 
 mp.register_event("file-loaded", file_load)
 mp.register_event("shutdown", shutdown)
-
-mp.add_hook("on_before_start_file", 0, function()
-    pre_0_33_0 = false
-end)
 
 mp.register_idle(watch_changes)
