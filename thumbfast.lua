@@ -121,6 +121,7 @@ local disabled = false
 local force_disabled = false
 local spawn_waiting = false
 local spawn_working = false
+local script_written = false
 
 local dirty = false
 
@@ -399,18 +400,22 @@ local function spawn(time)
 
     if os_name == "Windows" or pre_0_33_0 then
         table.insert(args, "--input-ipc-server="..options.socket)
-    else
+    elseif not script_written then
         local client_script_path = options.socket..".run"
-        local file = io.open(client_script_path, "w+")
-        if file == nil then
+        local script = io.open(client_script_path, "w+")
+        if script == nil then
             mp.msg.error("client script write failed")
             return
         else
-            file:write(string.format(client_script, options.socket))
-            file:close()
+            script_written = true
+            script:write(string.format(client_script, options.socket))
+            script:close()
             subprocess({"chmod", "+x", client_script_path}, true)
             table.insert(args, "--scripts="..client_script_path)
         end
+    else
+        local client_script_path = options.socket..".run"
+        table.insert(args, "--scripts="..client_script_path)
     end
 
     table.insert(args, "--")
