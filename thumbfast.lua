@@ -119,7 +119,6 @@ end
 local file = nil
 local file_bytes = 0
 local spawned = false
-local network = false
 local disabled = false
 local force_disabled = false
 local spawn_waiting = false
@@ -373,7 +372,7 @@ local function spawn(time, respawn)
     if path == nil then return end
 
     local open_filename = properties["stream-open-filename"]
-    local ytdl = open_filename and network and path ~= open_filename
+    local ytdl = open_filename and properties["demuxer-via-network"] and path ~= open_filename
     if ytdl then
         path = open_filename
     end
