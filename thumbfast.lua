@@ -224,9 +224,6 @@ local function get_os()
 end
 
 local os_name = mp.get_property("platform") or get_os()
-if os_name ~= "windows" and os_name ~= "linux" and os_name ~= "darwin" then
-    os_name = "linux"
-end
 
 local path_separator = os_name == "windows" and "\\" or "/"
 
