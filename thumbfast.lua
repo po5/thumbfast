@@ -627,6 +627,9 @@ local function check_new_thumb()
             last_real_w, last_real_h = real_w, real_h
             info(real_w, real_h)
         end
+        if not show_thumbnail then
+            file_timer:kill()
+        end
         return true
     end
 
@@ -711,10 +714,8 @@ local function thumb(time, r_x, r_y, script)
 end
 
 local function watch_changes()
-    if not dirty then return end
+    if not dirty or not properties["video-out-params"] then return end
     dirty = false
-
-    if not properties["video-out-params"] then return end
 
     local old_w = effective_w
     local old_h = effective_h
@@ -745,6 +746,7 @@ local function watch_changes()
             clear()
             spawned = false
             spawn(seek_time or mp.get_property_number("time-pos", 0), true)
+            file_timer:resume()
         else
             if rotate ~= last_rotate then
                 run("set video-rotate "..rotate)
@@ -763,6 +765,11 @@ local function watch_changes()
     last_rotate = rotate
     last_par = par
     last_has_vid = has_vid
+
+    if not spawned and not disabled and options.spawn_first and resized then
+        spawn(mp.get_property_number("time-pos", 0))
+        file_timer:resume()
+    end
 end
 
 local function update_property(name, value)
@@ -826,9 +833,6 @@ local function file_load()
 
     libmpv = properties["current-vo"] == "libmpv"
     spawned = false
-    if options.spawn_first then
-        spawn(mp.get_property_number("time-pos", 0))
-    end
 end
 
 local function shutdown()
