@@ -154,7 +154,7 @@ local show_thumbnail = false
 local filters_reset = {["lavfi-crop"]=true, ["crop"]=true}
 local filters_runtime = {["hflip"]=true, ["vflip"]=true}
 local filters_all = {["hflip"]=true, ["vflip"]=true, ["lavfi-crop"]=true, ["crop"]=true}
-local tone_mappings = {["clip"]=true, ["linear"]=true, ["gamma"]=true, ["reinhard"]=true, ["hable"]=true, ["mobius"]=true}
+local tone_mappings = {["none"]=true, ["clip"]=true, ["linear"]=true, ["gamma"]=true, ["reinhard"]=true, ["hable"]=true, ["mobius"]=true}
 
 local last_vf_reset = ""
 local last_vf_runtime = ""
@@ -310,9 +310,9 @@ local function vf_string(filters, full)
                 local tone_mapping = options.tone_mapping
                 if tone_mapping == "auto" then
                     tone_mapping = properties["tone-mapping"]
-                    if not tone_mappings[tone_mapping] then
-                        tone_mapping = "hable"
-                    end
+                end
+                if not tone_mappings[tone_mapping] then
+                    tone_mapping = "hable"
                 end
                 tone_mapping_vf = "zscale=transfer=linear,format=gbrpf32le,tonemap="..tone_mapping..",zscale=transfer=bt709,"
             end
