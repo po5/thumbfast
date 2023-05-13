@@ -52,8 +52,10 @@ If you installed mpv via [Homebrew](https://brew.sh/), there are no issues.
 `socket`: On Windows, a plain string. On Linux and Mac, a directory path for temporary files. Leave empty for auto.  
 `thumbnail`: Path for the temporary thumbnail file (must not be a directory). Leave empty for auto.  
 `max_height`, `max_width`: Maximum thumbnail size in pixels (scaled down to fit). Values are scaled when hidpi is enabled. Defaults to 200x200.  
+`tone_mapping`: Apply tone-mapping, no to disable. Defaults to auto, which copies your mpv config.  
 `overlay_id`: Overlay id for thumbnails. Leave blank unless you know what you're doing.  
 `spawn_first`: Spawn thumbnailer on file load for faster initial thumbnails. Defaults to no.  
+`quit_after_inactivity`: Close thumbnailer process after an inactivity period in seconds. Defaults to 0 (disabled).  
 `network`: Enable on remote files. Defaults to no.  
 `audio`: Enable on audio files. Defaults to no.  
 `hwdec`: Enable hardware decoding. Defaults to no.  

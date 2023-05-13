@@ -16,6 +16,9 @@ local options = {
     max_height = 200,
     max_width = 200,
 
+    -- Apply tone-mapping, no to disable
+    tone_mapping = "auto",
+
     -- Overlay id
     overlay_id = 42,
 
@@ -151,6 +154,7 @@ local show_thumbnail = false
 local filters_reset = {["lavfi-crop"]=true, ["crop"]=true}
 local filters_runtime = {["hflip"]=true, ["vflip"]=true}
 local filters_all = {["hflip"]=true, ["vflip"]=true, ["lavfi-crop"]=true, ["crop"]=true}
+local tone_mappings = {["clip"]=true, ["linear"]=true, ["gamma"]=true, ["reinhard"]=true, ["hable"]=true, ["mobius"]=true}
 
 local last_vf_reset = ""
 local last_vf_runtime = ""
@@ -300,7 +304,20 @@ local function vf_string(filters, full)
     end
 
     if full then
-        vf = vf.."scale=w="..effective_w..":h="..effective_h..par..",pad=w="..effective_w..":h="..effective_h..":x=-1:y=-1,format=bgra"
+        local tone_mapping_vf = ""
+        if options.tone_mapping ~= "no" then
+            if properties["video-params"] and properties["video-params"]["primaries"] == "bt.2020" then
+                local tone_mapping = options.tone_mapping
+                if tone_mapping == "auto" then
+                    tone_mapping = properties["tone-mapping"]
+                    if not tone_mappings[tone_mapping] then
+                        tone_mapping = "hable"
+                    end
+                end
+                tone_mapping_vf = "zscale=transfer=linear,format=gbrpf32le,tonemap="..tone_mapping..",zscale=transfer=bt709,"
+            end
+        end
+        vf = vf..tone_mapping_vf.."scale=w="..effective_w..":h="..effective_h..par..",pad=w="..effective_w..":h="..effective_h..":x=-1:y=-1,format=bgra"
     end
 
     return vf
@@ -446,6 +463,7 @@ local function spawn(time)
             if spawn_waiting and (success == false or (result.status ~= 0 and result.status ~= -2)) then
                 spawned = false
                 spawn_waiting = false
+                options.tone_mapping = "no"
                 mp.msg.error("mpv subprocess create failed")
                 if not spawn_working then -- notify users of required configuration
                     if options.mpv_path == "mpv" then
@@ -864,6 +882,7 @@ mp.observe_property("stream-open-filename", "native", update_property)
 mp.observe_property("macos-app-activation-policy", "native", update_property)
 mp.observe_property("current-vo", "native", update_property)
 mp.observe_property("video-rotate", "native", update_property)
+mp.observe_property("tone-mapping", "native", update_property)
 mp.observe_property("path", "native", update_property)
 mp.observe_property("vid", "native", sync_changes)
 mp.observe_property("edition", "native", sync_changes)
