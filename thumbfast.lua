@@ -154,7 +154,9 @@ local show_thumbnail = false
 local filters_reset = {["lavfi-crop"]=true, ["crop"]=true}
 local filters_runtime = {["hflip"]=true, ["vflip"]=true}
 local filters_all = {["hflip"]=true, ["vflip"]=true, ["lavfi-crop"]=true, ["crop"]=true}
+
 local tone_mappings = {["none"]=true, ["clip"]=true, ["linear"]=true, ["gamma"]=true, ["reinhard"]=true, ["hable"]=true, ["mobius"]=true}
+local last_tone_mapping = nil
 
 local last_vf_reset = ""
 local last_vf_runtime = ""
@@ -323,7 +325,7 @@ local function vf_string(filters, full)
         if properties["video-params"] and properties["video-params"]["primaries"] == "bt.2020" then
             local tone_mapping = options.tone_mapping
             if tone_mapping == "auto" then
-                tone_mapping = properties["tone-mapping"]
+                tone_mapping = last_tone_mapping or properties["tone-mapping"]
                 if tone_mapping == "auto" and properties["current-vo"] == "gpu-next" then
                     tone_mapping = vo_tone_mapping()
                 end
@@ -331,7 +333,7 @@ local function vf_string(filters, full)
             if not tone_mappings[tone_mapping] then
                 tone_mapping = "hable"
             end
-            properties["tone-mapping"] = tone_mapping
+            last_tone_mapping = tone_mapping
             vf = vf .. "zscale=transfer=linear,format=gbrpf32le,tonemap="..tone_mapping..",zscale=transfer=bt709,"
         end
     end
@@ -817,6 +819,9 @@ end
 local function update_property_dirty(name, value)
     properties[name] = value
     dirty = true
+    if name == "tone-mapping" then
+        last_tone_mapping = nil
+    end
 end
 
 local function update_tracklist(name, value)
@@ -860,6 +865,7 @@ local function file_load()
     spawned = false
     real_w, real_h = nil, nil
     last_real_w, last_real_h = nil, nil
+    last_tone_mapping = nil
     last_seek_time = nil
     if info_timer then
         info_timer:kill()
