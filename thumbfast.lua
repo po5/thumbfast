@@ -22,6 +22,9 @@ local options = {
     -- Spawn thumbnailer on file load for faster initial thumbnails
     spawn_first = false,
 
+    -- Close thumbnailer process after an inactivity period in seconds, 0 to disable
+    quit_after_inactivity = 0,
+
     -- Enable on network playback
     network = false,
 
@@ -365,11 +368,20 @@ local function remove_thumbnail_files()
     os.remove(options.thumbnail..".bgra")
 end
 
-local function spawn(time, respawn)
+local activity_timer
+
+local function spawn(time)
     if disabled then return end
 
     local path = properties["path"]
     if path == nil then return end
+
+    if options.quit_after_inactivity > 0 then
+        if show_thumbnail or activity_timer:is_enabled() then
+            activity_timer:kill()
+        end
+        activity_timer:resume()
+    end
 
     local open_filename = properties["stream-open-filename"]
     local ytdl = open_filename and properties["demuxer-via-network"] and path ~= open_filename
@@ -628,6 +640,42 @@ file_timer = mp.add_periodic_timer(file_check_period, function()
 end)
 file_timer:kill()
 
+local function clear()
+    file_timer:kill()
+    seek_timer:kill()
+    if options.quit_after_inactivity > 0 then
+        if show_thumbnail or activity_timer:is_enabled() then
+            activity_timer:kill()
+        end
+        activity_timer:resume()
+    end
+    last_seek_time = nil
+    show_thumbnail = false
+    last_x = nil
+    last_y = nil
+    if script_name then return end
+    if pre_0_30_0 then
+        mp.command_native({"overlay-remove", options.overlay_id})
+    else
+        mp.command_native_async({"overlay-remove", options.overlay_id}, function() end)
+    end
+end
+
+local function quit()
+    activity_timer:kill()
+    if show_thumbnail then
+        activity_timer:resume()
+        return
+    end
+    run("quit")
+    spawned = false
+    real_w, real_h = nil, nil
+    clear()
+end
+
+activity_timer = mp.add_timeout(options.quit_after_inactivity, quit)
+activity_timer:kill()
+
 local function thumb(time, r_x, r_y, script)
     if disabled then return end
 
@@ -648,26 +696,18 @@ local function thumb(time, r_x, r_y, script)
         draw(real_w, real_h, script)
     end
 
+    if options.quit_after_inactivity > 0 then
+        if show_thumbnail or activity_timer:is_enabled() then
+            activity_timer:kill()
+        end
+        activity_timer:resume()
+    end
+
     if time == last_seek_time then return end
     last_seek_time = time
     if not spawned then spawn(time) end
     request_seek()
     if not file_timer:is_enabled() then file_timer:resume() end
-end
-
-local function clear()
-    file_timer:kill()
-    seek_timer:kill()
-    last_seek_time = nil
-    show_thumbnail = false
-    last_x = nil
-    last_y = nil
-    if script_name then return end
-    if pre_0_30_0 then
-        mp.command_native({"overlay-remove", options.overlay_id})
-    else
-        mp.command_native_async({"overlay-remove", options.overlay_id}, function() end)
-    end
 end
 
 local function watch_changes()
