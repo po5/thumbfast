@@ -150,8 +150,7 @@ local show_thumbnail = false
 
 local filters_reset = {["lavfi-crop"]=true, ["crop"]=true}
 local filters_runtime = {["hflip"]=true, ["vflip"]=true}
-local filters_all = filters_runtime
-for k,v in pairs(filters_reset) do filters_all[k] = v end
+local filters_all = {["hflip"]=true, ["vflip"]=true, ["lavfi-crop"]=true, ["crop"]=true}
 
 local last_vf_reset = ""
 local last_vf_runtime = ""
