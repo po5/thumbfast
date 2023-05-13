@@ -196,22 +196,22 @@ local function get_os()
     raw_os_name = (raw_os_name):lower()
 
     local os_patterns = {
-        ["windows"] = "Windows",
-        ["linux"]   = "Linux",
+        ["windows"] = "windows",
+        ["linux"]   = "linux",
 
-        ["osx"]     = "Mac",
-        ["mac"]     = "Mac",
-        ["darwin"]  = "Mac",
+        ["osx"]     = "darwin",
+        ["mac"]     = "darwin",
+        ["darwin"]  = "darwin",
 
-        ["^mingw"]  = "Windows",
-        ["^cygwin"] = "Windows",
+        ["^mingw"]  = "windows",
+        ["^cygwin"] = "windows",
 
-        ["bsd$"]    = "Mac",
-        ["sunos"]   = "Mac"
+        ["bsd$"]    = "darwin",
+        ["sunos"]   = "darwin"
     }
 
     -- Default to linux
-    local str_os_name = "Linux"
+    local str_os_name = "linux"
 
     for pattern, name in pairs(os_patterns) do
         if raw_os_name:match(pattern) then
@@ -223,11 +223,15 @@ local function get_os()
     return str_os_name
 end
 
-local os_name = get_os()
-local path_separator = os_name == "Windows" and "\\" or "/"
+local os_name = mp.get_property("platform") or get_os()
+if os_name ~= "windows" and os_name ~= "linux" and os_name ~= "darwin" then
+    os_name = "linux"
+end
+
+local path_separator = os_name == "windows" and "\\" or "/"
 
 if options.socket == "" then
-    if os_name == "Windows" then
+    if os_name == "windows" then
         options.socket = "thumbfast"
     else
         options.socket = "/tmp/thumbfast"
@@ -235,7 +239,7 @@ if options.socket == "" then
 end
 
 if options.thumbnail == "" then
-    if os_name == "Windows" then
+    if os_name == "windows" then
         options.thumbnail = os.getenv("TEMP").."\\thumbfast.out"
     else
         options.thumbnail = "/tmp/thumbfast.out"
@@ -248,7 +252,7 @@ options.socket = options.socket .. unique
 options.thumbnail = options.thumbnail .. unique
 
 if options.direct_io then
-    if os_name == "Windows" then
+    if os_name == "windows" then
         winapi.socket_wc = winapi.MultiByteToWideChar("\\\\.\\pipe\\" .. options.socket)
     end
 
@@ -260,7 +264,7 @@ end
 local mpv_path = options.mpv_path
 local libmpv = false
 
-if mpv_path == "mpv" and os_name == "Mac" and unique then
+if mpv_path == "mpv" and os_name == "darwin" and unique then
     -- TODO: look into ~~osxbundle/
     mpv_path = string.gsub(subprocess({"ps", "-o", "comm=", "-p", tostring(unique)}).stdout, "[\n\r]", "")
     if mpv_path ~= "mpv" then
@@ -410,11 +414,11 @@ local function spawn(time)
         table.insert(args, "--sws-allow-zimg=no")
     end
 
-    if os_name == "Mac" and properties["macos-app-activation-policy"] then
+    if os_name == "darwin" and properties["macos-app-activation-policy"] then
         table.insert(args, "--macos-app-activation-policy=accessory")
     end
 
-    if os_name == "Windows" or pre_0_33_0 then
+    if os_name == "windows" or pre_0_33_0 then
         table.insert(args, "--input-ipc-server="..options.socket)
     elseif not script_written then
         local client_script_path = options.socket..".run"
@@ -453,7 +457,7 @@ local function spawn(time)
                                 mpv_path = "ImPlay"
                                 spawn(time)
                             else -- ImPlay not in path
-                                if os_name ~= "Mac" then
+                                if os_name ~= "darwin" then
                                     force_disabled = true
                                     info(real_w or effective_w, real_h or effective_h)
                                 end
@@ -462,7 +466,7 @@ local function spawn(time)
                             end
                         else
                             mp.commandv("show-text", "thumbfast: ERROR! cannot create mpv subprocess", 5000)
-                            if os_name == "Windows" then
+                            if os_name == "windows" then
                                 mp.commandv("script-message-to", "mpvnet", "show-text", "thumbfast: ERROR! install standalone mpv, see README", 5000, 20)
                                 mp.commandv("script-message", "mpv.net", "show-text", "thumbfast: ERROR! install standalone mpv, see README", 5000, 20)
                             end
@@ -501,7 +505,7 @@ local function run(command)
 
     local command_n = command.."\n"
 
-    if os_name == "Windows" then
+    if os_name == "windows" then
         if file and file_bytes + #command_n >= 4096 then
             file:close()
             file = nil
@@ -566,7 +570,7 @@ local function real_res(req_w, req_h, filesize)
 end
 
 local function move_file(from, to)
-    if os_name == "Windows" then
+    if os_name == "windows" then
         os.remove(to)
     end
     -- move the file because it can get overwritten while overlay-add is reading it, and crash the player
@@ -835,7 +839,7 @@ end
 local function shutdown()
     run("quit")
     remove_thumbnail_files()
-    if os_name ~= "Windows" then
+    if os_name ~= "windows" then
         os.remove(options.socket)
         os.remove(options.socket..".run")
     end
