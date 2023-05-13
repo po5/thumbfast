@@ -819,6 +819,8 @@ end
 
 local function file_load()
     clear()
+    libmpv = properties["current-vo"] == "libmpv"
+    spawned = false
     real_w, real_h = nil, nil
     last_real_w, last_real_h = nil, nil
     last_seek_time = nil
@@ -829,10 +831,6 @@ local function file_load()
 
     calc_dimensions()
     info(effective_w, effective_h)
-    if disabled then return end
-
-    libmpv = properties["current-vo"] == "libmpv"
-    spawned = false
 end
 
 local function shutdown()
