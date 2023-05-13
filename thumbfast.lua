@@ -320,8 +320,7 @@ local function vf_string(filters, full)
         end
     end
 
-    local tone_mapping_vf = ""
-    if options.tone_mapping ~= "no" then
+    if (full and options.tone_mapping ~= "no") or options.tone_mapping == "auto" then
         if properties["video-params"] and properties["video-params"]["primaries"] == "bt.2020" then
             local tone_mapping = options.tone_mapping
             if tone_mapping == "auto" then
