@@ -745,7 +745,7 @@ local function watch_changes()
             run("quit")
             clear()
             spawned = false
-            spawn(seek_time or mp.get_property_number("time-pos", 0), true)
+            spawn(seek_time or mp.get_property_number("time-pos", 0))
             file_timer:resume()
         else
             if rotate ~= last_rotate then
