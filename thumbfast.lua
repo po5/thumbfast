@@ -4,6 +4,12 @@
 --
 -- Built for easy integration in third-party UIs.
 
+--[[
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at https://mozilla.org/MPL/2.0/.
+]]
+
 local options = {
     -- Socket path (leave empty for auto)
     socket = "",

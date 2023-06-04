@@ -63,6 +63,8 @@ If you installed mpv via [Homebrew](https://brew.sh/), there are no issues.
 `mpv_path`: Custom path to the mpv executable. Defaults to mpv.
 
 ## For UI developers: How to add thumbfast support to your script
+This API usage example code is [CC0 (public domain)](https://creativecommons.org/share-your-work/public-domain/cc0/).
+
 Declare the thumbfast state variable near the top of your script.  
 *Do not manually modify those values, they are automatically updated by the script and changes will be overwritten.*
 ```lua
