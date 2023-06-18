@@ -4,6 +4,18 @@ local msg = require 'mp.msg'
 local opt = require 'mp.options'
 local utils = require 'mp.utils'
 
+local has_trace = msg.trace ~= nil
+
+local pre_0_25_0 = mp.get_property("sub-filter-sdh") ~= nil
+
+if not has_trace then
+    msg.trace = msg.debug
+end
+
+if mp.get_osd_size == nil then
+    mp.get_osd_size = mp.get_screen_size
+end
+
 --
 -- Parameters
 --
@@ -182,6 +194,9 @@ local margins_opts = {
 
 -- scale factor for translating between real and virtual ASS coordinates
 function get_virt_scale_factor()
+    if pre_0_25_0 then
+        return 1, 1
+    end
     local w, h = mp.get_osd_size()
     if w <= 0 or h <= 0 then
         return 0, 0
@@ -1101,7 +1116,7 @@ function show_message(text, duration)
 end
 
 function render_message(ass)
-    if state.message_hide_timer and state.message_hide_timer:is_enabled() and
+    if state.message_hide_timer and
        state.message_text
     then
         local _, lines = string.gsub(state.message_text, "\\N", "")
@@ -1293,7 +1308,7 @@ function window_controls(topbar)
     -- Window Title
     ne = new_element("wctitle", "button")
     ne.content = function ()
-        local title = mp.command_native({"expand-text", user_opts.title})
+        local title = pre_0_25_0 and user_opts.title or mp.command_native({"expand-text", user_opts.title})
         -- escape ASS, and strip newlines and trailing slashes
         title = title:gsub("\\n", " "):gsub("\\$", ""):gsub("{","\\{")
         return not (title == "") and title or "mpv"
@@ -1925,7 +1940,7 @@ function osc_init()
 
     ne.content = function ()
         local title = state.forced_title or
-                      mp.command_native({"expand-text", user_opts.title})
+                      (pre_0_25_0 and user_opts.title or mp.command_native({"expand-text", user_opts.title}))
         -- escape ASS, and strip newlines and trailing slashes
         title = title:gsub("\\n", " "):gsub("\\$", ""):gsub("{","\\{")
         return not (title == "") and title or "mpv"
@@ -2411,7 +2426,7 @@ function request_tick()
         state.tick_timer = mp.add_timeout(0, tick)
     end
 
-    if not state.tick_timer:is_enabled() then
+    if state.tick_timer then
         local now = mp.get_time()
         local timeout = tick_delay - (now - state.tick_last_time)
         if timeout < 0 then
@@ -2952,6 +2967,20 @@ mp.set_key_bindings({
     {"mbtn_left_dbl",       "ignore"},
     {"shift+mbtn_left_dbl", "ignore"},
     {"mbtn_right_dbl",      "ignore"},
+
+    {"mouse_btn0",              function(e) process_event("mbtn_left", "up") end,
+                                function(e) process_event("mbtn_left", "down")  end},
+    {"shift+mouse_btn0",        function(e) process_event("shift+mbtn_left", "up") end,
+                                function(e) process_event("shift+mbtn_left", "down")  end},
+    {"mouse_btn2",              function(e) process_event("mbtn_right", "up") end,
+                                function(e) process_event("mbtn_right", "down")  end},
+    {"mouse_btn3",              function(e) process_event("wheel_up", "press") end},
+    {"mouse_btn4",              function(e) process_event("wheel_up", "press") end},
+    {"axis_up",                 function(e) process_event("wheel_down", "press") end},
+    {"axis_down",               function(e) process_event("wheel_down", "press") end},
+    {"mouse_btn0_dbl",          "ignore"},
+    {"shift+mouse_btn0_dbl",    "ignore"},
+    {"mouse_btn2_dbl",          "ignore"},
 }, "thumbfast-osc-input", "force")
 mp.enable_key_bindings("thumbfast-osc-input")
 
@@ -3054,7 +3083,7 @@ end
 
 visibility_mode(user_opts.visibility, true)
 mp.register_script_message("osc-visibility", visibility_mode)
-mp.add_key_binding(nil, "visibility", function() visibility_mode("cycle") end)
+mp.add_key_binding(has_trace and nil or "del", "visibility", function() visibility_mode("cycle") end) --shouldn't use has_trace as that shows up in a different mpv version from nil key
 
 mp.register_script_message("osc-idlescreen", idlescreen_visibility)
 
