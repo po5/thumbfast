@@ -951,6 +951,7 @@ function render_elements(master_ass)
 
                             elem_ass:new_event()
                             elem_ass:pos(thumb_x * r_w, thumb_y * r_h)
+                            elem_ass:an(7)
                             elem_ass:append(osc_styles.timePosBar)
                             elem_ass:append("{\\1a&H20&}")
                             elem_ass:draw_start()
