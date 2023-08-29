@@ -2118,7 +2118,7 @@ function osc_init()
     ne.content = function ()
         local base_a = tog_forced_only.layout.alpha
         local alpha = base_a[1]
-        if not mp.get_property_bool("sub-forced-only-cur") then
+        if not mp.get_property_bool("sub-forced-events-only") then
             alpha = 255
         end
         local ret = assdraw.ass_new()
@@ -2130,7 +2130,7 @@ function osc_init()
         return ret.text
     end
     ne.eventresponder["mbtn_left_up"] = function ()
-        mp.set_property_bool("sub-forced-only", (not mp.get_property_bool("sub-forced-only-cur")))
+        mp.set_property_bool("sub-forced-events-only", (not mp.get_property_bool("sub-forced-events-only")))
     end
 
     --tog_fs
