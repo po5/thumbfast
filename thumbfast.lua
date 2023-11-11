@@ -128,7 +128,7 @@ if options.direct_io then
     end
 end
 
-local file = nil
+local file
 local file_bytes = 0
 local spawned = false
 local disabled = false
@@ -139,21 +139,16 @@ local script_written = false
 
 local dirty = false
 
-local x = nil
-local y = nil
-local last_x = x
-local last_y = y
+local x, y
+local last_x, last_y
 
-local last_seek_time = nil
+local last_seek_time
 
-local effective_w = options.max_width
-local effective_h = options.max_height
-local real_w = nil
-local real_h = nil
-local last_real_w = nil
-local last_real_h = nil
+local effective_w, effective_h = options.max_width, options.max_height
+local real_w, real_h
+local last_real_w, last_real_h
 
-local script_name = nil
+local script_name
 
 local show_thumbnail = false
 
@@ -162,7 +157,7 @@ local filters_runtime = {["hflip"]=true, ["vflip"]=true}
 local filters_all = {["hflip"]=true, ["vflip"]=true, ["lavfi-crop"]=true, ["crop"]=true}
 
 local tone_mappings = {["none"]=true, ["clip"]=true, ["linear"]=true, ["gamma"]=true, ["reinhard"]=true, ["hable"]=true, ["mobius"]=true}
-local last_tone_mapping = nil
+local last_tone_mapping
 
 local last_vf_reset = ""
 local last_vf_runtime = ""
@@ -175,7 +170,7 @@ local last_par = ""
 local last_has_vid = 0
 local has_vid = 0
 
-local file_timer = nil
+local file_timer
 local file_check_period = 1/60
 
 local allow_fast_seek = true
@@ -739,8 +734,7 @@ local function thumb(time, r_x, r_y, script)
     script_name = script
     if last_x ~= x or last_y ~= y or not show_thumbnail then
         show_thumbnail = true
-        last_x = x
-        last_y = y
+        last_x, last_y = x, y
         draw(real_w, real_h, script)
     end
 
