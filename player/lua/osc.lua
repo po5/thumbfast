@@ -2329,20 +2329,20 @@ function update_margins()
         reset_margins()
     end
 
-    if utils.shared_script_property_set then
+    if mp.del_property then
+    mp.set_property_native("user-data/osc/margins", margins)
+    else
     utils.shared_script_property_set("osc-margins",
         string.format("%f,%f,%f,%f", margins.l, margins.r, margins.t, margins.b))
     end
-    mp.set_property_native("user-data/osc/margins", margins)
 end
 
 function shutdown()
     reset_margins()
-    if utils.shared_script_property_set then
-    utils.shared_script_property_set("osc-margins", nil)
-    end
     if mp.del_property then
     mp.del_property("user-data/osc")
+    else
+    utils.shared_script_property_set("osc-margins", nil)
     end
 end
 
@@ -3006,10 +3006,11 @@ function visibility_mode(mode, no_osd)
     end
 
     user_opts.visibility = mode
-    if utils.shared_script_property_set then
+    if mp.del_property then
+    mp.set_property_native("user-data/osc/visibility", mode)
+    else
     utils.shared_script_property_set("osc-visibility", mode)
     end
-    mp.set_property_native("user-data/osc/visibility", mode)
 
     if not no_osd and tonumber(mp.get_property("osd-level")) >= 1 then
         mp.osd_message("OSC visibility: " .. mode)
@@ -3041,10 +3042,11 @@ function idlescreen_visibility(mode, no_osd)
         user_opts.idlescreen = false
     end
 
-    if utils.shared_script_property_set then
+    if mp.del_property then
+    mp.set_property_native("user-data/osc/idlescreen", user_opts.idlescreen)
+    else
     utils.shared_script_property_set("osc-idlescreen", mode)
     end
-    mp.set_property_native("user-data/osc/idlescreen", user_opts.idlescreen)
 
     if not no_osd and tonumber(mp.get_property("osd-level")) >= 1 then
         mp.osd_message("OSC logo visibility: " .. tostring(mode))
