@@ -1,4 +1,14 @@
 mp.set_property("osc", "no")
+if mp.get_script_name() ~= "osc" then
+    -- reclaim osc script name after the builtin osc unloads
+    local script_path = debug.getinfo(1, "S").source:match("^@?(.*[\\/]osc%.lua)$")
+    if script_path then
+        mp.add_timeout(0.05, function()
+            mp.commandv("load-script", script_path)
+        end)
+        return
+    end
+end
 local assdraw = require 'mp.assdraw'
 local msg = require 'mp.msg'
 local opt = require 'mp.options'
