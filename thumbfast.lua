@@ -61,6 +61,16 @@ mp.options.read_options(options, "thumbfast")
 local properties = {}
 local pre_0_30_0 = mp.command_native_async == nil
 local pre_0_33_0 = true
+local ipc_option = mp.get_property("input-ipc-server") and "input-ipc-server" or "input-unix-socket" --just "input-unix-socket" would work until it gets deprecated, can guard it behind any mp property to make sure it doesn't break
+
+if not mp.utils.file_info then
+    mp.utils.file_info = function(path)
+        local finfo = io.open(path, "rb")
+        if finfo then
+            return {size=finfo:seek("end"), is_file=true}
+        end
+    end
+end
 
 function subprocess(args, async, callback)
     callback = callback or function() end
@@ -73,7 +83,13 @@ function subprocess(args, async, callback)
         end
     else
         if async then
-            return mp.utils.subprocess_detached({args = args}, callback)
+            if mp.utils.subprocess_detached then
+                return mp.utils.subprocess_detached({args = args}, callback)
+            else
+                --return io.popen(table.concat(args, " "))
+                --return os.execute(table.concat(args, " ") .. " 2>&1 &")
+                return os.execute(table.concat(args, " ") .. " &")
+            end
         else
             return mp.utils.subprocess({args = args})
         end
@@ -256,7 +272,7 @@ if options.thumbnail == "" then
     end
 end
 
-local unique = mp.utils.getpid()
+local unique = mp.utils.getpid and mp.utils.getpid() or (math.randomseed(os.time()) or math.random(10000000))
 
 options.socket = options.socket .. unique
 options.thumbnail = options.thumbnail .. unique
@@ -356,7 +372,7 @@ local function vf_string(filters, full)
     end
 
     if full then
-        vf = vf.."scale=w="..effective_w..":h="..effective_h..par..",pad=w="..effective_w..":h="..effective_h..":x=-1:y=-1,format=bgra"
+        vf = vf.."lavfi=[scale=w="..effective_w..":h="..effective_h..par..",pad=w="..effective_w..":h="..effective_h..":x=-1:y=-1,format=bgra]"
     end
 
     return vf
@@ -435,6 +451,7 @@ local function spawn(time)
     if options.quit_after_inactivity > 0 then
         if show_thumbnail or activity_timer:is_enabled() then
             activity_timer:kill()
+            activity_timer.next_deadline = nil
         end
         activity_timer:resume()
     end
@@ -451,11 +468,11 @@ local function spawn(time)
     has_vid = vid or 0
 
     local args = {
-        mpv_path, "--no-config", "--msg-level=all=no", "--idle", "--pause", "--keep-open=always", "--really-quiet", "--no-terminal",
-        "--load-scripts=no", "--osc=no", "--ytdl=no", "--load-stats-overlay=no", "--load-osd-console=no", "--load-auto-profiles=no",
+        mpv_path, "--no-config", "--idle", "--pause", "--keep-open=always",
+        "--load-scripts=no", "--osc=no", "--ytdl=no",
         "--edition="..(properties["edition"] or "auto"), "--vid="..(vid or "auto"), "--no-sub", "--no-audio",
         "--start="..time, allow_fast_seek and "--hr-seek=no" or "--hr-seek=yes",
-        "--ytdl-format=worst", "--demuxer-readahead-secs=0", "--demuxer-max-bytes=128KiB",
+        "--ytdl-format=worst", "--demuxer-readahead-secs=0",
         "--vd-lavc-skiploopfilter=all", "--vd-lavc-software-fallback=1", "--vd-lavc-fast", "--vd-lavc-threads=2", "--hwdec="..(options.hwdec and "auto" or "no"),
         "--vf="..vf_string(filters_all, true),
         "--sws-scaler=fast-bilinear",
@@ -472,7 +489,7 @@ local function spawn(time)
     end
 
     if os_name == "windows" or pre_0_33_0 then
-        table.insert(args, "--input-ipc-server="..options.socket)
+        table.insert(args, "--"..ipc_option.."="..options.socket)
     elseif not script_written then
         local client_script_path = options.socket..".run"
         local script = io.open(client_script_path, "w+")
@@ -634,7 +651,7 @@ end
 
 local function seek(fast)
     if last_seek_time then
-        run("async seek " .. last_seek_time .. (fast and " absolute+keyframes" or " absolute+exact"))
+        run("seek " .. last_seek_time .. (fast and " absolute+keyframes" or " absolute+exact"))
     end
 end
 
@@ -649,15 +666,17 @@ seek_timer = mp.add_periodic_timer(seek_period, function()
         if seek_period_counter == 2 then
             if allow_fast_seek then
                 seek_timer:kill()
+            	seek_timer.next_deadline = nil
                 seek()
             end
         else seek_period_counter = seek_period_counter + 1 end
     end
 end)
 seek_timer:kill()
+seek_timer.next_deadline = nil
 
 local function request_seek()
-    if seek_timer:is_enabled() then
+    if seek_timer.next_deadline then
         seek_period_counter = 0
     else
         seek_timer:resume()
@@ -687,6 +706,7 @@ local function check_new_thumb()
         end
         if not show_thumbnail then
             file_timer:kill()
+            file_timer.next_deadline = nil
         end
         return true
     end
@@ -700,13 +720,17 @@ file_timer = mp.add_periodic_timer(file_check_period, function()
     end
 end)
 file_timer:kill()
+file_timer.next_deadline = nil
 
 local function clear()
     file_timer:kill()
+    file_timer.next_deadline = nil
     seek_timer:kill()
+    seek_timer.next_deadline = nil
     if options.quit_after_inactivity > 0 then
-        if show_thumbnail or activity_timer:is_enabled() then
+        if show_thumbnail or activity_timer.next_deadline then
             activity_timer:kill()
+            activity_timer.next_deadline = nil
         end
         activity_timer:resume()
     end
@@ -724,6 +748,7 @@ end
 
 local function quit()
     activity_timer:kill()
+    activity_timer.next_deadline = nil
     if show_thumbnail then
         activity_timer:resume()
         return
@@ -736,6 +761,7 @@ end
 
 activity_timer = mp.add_timeout(options.quit_after_inactivity, quit)
 activity_timer:kill()
+activity_timer.next_deadline = nil
 
 local function thumb(time, r_x, r_y, script)
     if disabled then return end
@@ -757,8 +783,9 @@ local function thumb(time, r_x, r_y, script)
     end
 
     if options.quit_after_inactivity > 0 then
-        if show_thumbnail or activity_timer:is_enabled() then
+        if show_thumbnail or activity_timer.next_deadline then
             activity_timer:kill()
+            activity_timer.next_deadline = nil
         end
         activity_timer:resume()
     end
@@ -767,7 +794,7 @@ local function thumb(time, r_x, r_y, script)
     last_seek_time = time
     if not spawned then spawn(time) end
     request_seek()
-    if not file_timer:is_enabled() then file_timer:resume() end
+    if not file_timer.next_deadline then file_timer:resume() end
 end
 
 local function watch_changes()
@@ -937,4 +964,9 @@ mp.register_script_message("clear", clear)
 mp.register_event("file-loaded", file_load)
 mp.register_event("shutdown", shutdown)
 
-mp.register_idle(watch_changes)
+if mp.register_idle then
+    mp.register_idle(watch_changes)
+else
+    mp.register_event("tick", watch_changes)
+end
+
