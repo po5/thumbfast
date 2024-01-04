@@ -36,11 +36,11 @@ Hover on the timeline for nice thumbnails.
 - [mfpbar](https://codeberg.org/NRK/mpv-toolbox/src/branch/master/mfpbar)
 
 ## mpv frontends
-If you are using a GUI frontend such as [mpv.net](https://github.com/mpvnet-player/mpv.net), you will need [standalone mpv](https://mpv.io/installation/) accessible within [Path](https://learn.microsoft.com/en-us/previous-versions/office/developer/sharepoint-2010/ee537574(v=office.14)#to-add-a-path-to-the-path-environment-variable).  
-The easiest way is to copy standalone mpv files inside of your mpv.net installation folder.  
+[mpv.net](https://github.com/mpvnet-player/mpv.net) since version 7.0.0.6 is directly supported, a special configuration isn't required, for earlier versions or other frontends, you will need [standalone mpv](https://mpv.io/installation/) accessible within [Path](https://learn.microsoft.com/en-us/previous-versions/office/developer/sharepoint-2010/ee537574(v=office.14)#to-add-a-path-to-the-path-environment-variable).  
+The easiest way is to copy standalone mpv files inside of your frontend installation folder.  
 It will be used in the background to generate thumbnails.
 
-The only exception is [ImPlay](https://tsl0922.github.io/ImPlay/), which can do thumbnailing on its own.  
+[ImPlay](https://tsl0922.github.io/ImPlay/) can do thumbnailing on its own.  
 Set `mpv_path=ImPlay` in `script-opts/thumbfast.conf`.
 
 ## MacOS
