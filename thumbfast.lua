@@ -51,7 +51,7 @@ local options = {
     direct_io = false,
 
     -- Custom path to the mpv executable
-    mpv_path = "mpv"
+    mpv_path = "auto"
 }
 
 mp.utils = require "mp.utils"
@@ -274,6 +274,17 @@ end
 options.scale_factor = math.floor(options.scale_factor)
 
 local mpv_path = options.mpv_path
+
+if mpv_path == "auto" then
+    local frontend_name = mp.get_property_native("user-data/frontend/name")
+    if frontend_name == "mpv.net" then
+        mpv_path = mp.get_property_native("user-data/frontend/process-path")
+    end
+end
+
+if mpv_path == "auto" then
+    mpv_path = "mpv"
+end
 
 if mpv_path == "mpv" and os_name == "darwin" and unique then
     -- TODO: look into ~~osxbundle/
