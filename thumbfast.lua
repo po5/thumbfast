@@ -442,7 +442,7 @@ local function spawn(time)
     local open_filename = properties["stream-open-filename"]
     local ytdl = open_filename and properties["demuxer-via-network"] and path ~= open_filename
     if ytdl then
-        path = open_filename
+        path = open_filename:gsub(",ytdl_description.+", "")
     end
 
     remove_thumbnail_files()
