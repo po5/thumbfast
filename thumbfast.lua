@@ -61,6 +61,8 @@ mp.options.read_options(options, "thumbfast")
 local properties = {}
 local pre_0_30_0 = mp.command_native_async == nil
 local pre_0_33_0 = true
+-- In mpv commit 5fed12e, mpv add `media-controls` option on Windows and set `player` as default
+local after_5fed12e = mp.get_property("media-controls") ~= nil
 
 function subprocess(args, async, callback)
     callback = callback or function() end
@@ -469,6 +471,11 @@ local function spawn(time)
 
     if os_name == "darwin" and properties["macos-app-activation-policy"] then
         table.insert(args, "--macos-app-activation-policy=accessory")
+    end
+
+    -- disable media-controls for subprocess
+    if os_name == "windows" and after_5fed12e then
+        table.insert(args, "--media-controls=no")
     end
 
     if os_name == "windows" or pre_0_33_0 then
