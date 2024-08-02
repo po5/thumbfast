@@ -275,6 +275,12 @@ end
 options.scale_factor = math.floor(options.scale_factor)
 
 local mpv_path = options.mpv_path
+local frontend_path
+
+if mpv_path == "mpv" and os_name == "windows" then
+    frontend_path = mp.get_property_native("user-data/frontend/process-path")
+    mpv_path = frontend_path or mpv_path
+end
 
 if mpv_path == "mpv" and os_name == "darwin" and unique then
     -- TODO: look into ~~osxbundle/
@@ -525,7 +531,7 @@ local function spawn(time)
                             end
                         else
                             mp.commandv("show-text", "thumbfast: ERROR! cannot create mpv subprocess", 5000)
-                            if os_name == "windows" then
+                            if os_name == "windows" and frontend_path == nil then
                                 mp.commandv("script-message-to", "mpvnet", "show-text", "thumbfast: ERROR! install standalone mpv, see README", 5000, 20)
                                 mp.commandv("script-message", "mpv.net", "show-text", "thumbfast: ERROR! install standalone mpv, see README", 5000, 20)
                             end
