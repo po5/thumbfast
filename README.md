@@ -32,6 +32,7 @@ Hover on the timeline for nice thumbnails.
 - [tethys](https://github.com/Zren/mpv-osc-tethys) (PR pending, [lua](https://github.com/po5/mpv-osc-tethys/blob/thumbfast/osc_tethys.lua))
 - [modern](https://github.com/maoiscat/mpv-osc-modern/tree/with.thumbfast) (separate branch)
 - [ModernX](https://github.com/cyl0/ModernX)
+- [ModernZ](https://github.com/Samillion/ModernZ)
 - [oscc](https://github.com/longtermfree/oscc)
 - [mfpbar](https://codeberg.org/NRK/mpv-toolbox/src/branch/master/mfpbar)
 
