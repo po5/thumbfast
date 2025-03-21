@@ -459,7 +459,7 @@ local function spawn(time)
 
     local args = {
         mpv_path, "--no-config", "--msg-level=all=no", "--idle", "--pause", "--keep-open=always", "--really-quiet", "--no-terminal",
-        "--load-scripts=no", "--osc=no", "--ytdl=no", "--load-stats-overlay=no", "--load-osd-console=no", "--load-auto-profiles=no",
+        "--load-scripts=no", "--osc=no", "--ytdl=no", "--load-stats-overlay=no", "--load-auto-profiles=no",
         "--edition="..(properties["edition"] or "auto"), "--vid="..(vid or "auto"), "--no-sub", "--no-audio",
         "--start="..time, allow_fast_seek and "--hr-seek=no" or "--hr-seek=yes",
         "--ytdl-format=worst", "--demuxer-readahead-secs=0", "--demuxer-max-bytes=128KiB",
@@ -469,6 +469,30 @@ local function spawn(time)
         "--video-rotate="..last_rotate,
         "--ovc=rawvideo", "--of=image2", "--ofopts=update=1", "--o="..options.thumbnail
     }
+
+    if mp.get_property_native("load-console") ~= nil then
+        table.insert(args, "--load-console=no")
+    elseif mp.get_property_native("load-osd-console") ~= nil then
+        table.insert(args, "--load-osd-console=no")
+    end
+
+    if mp.get_property_native("load-select") ~= nil then
+        table.insert(args, "--load-select=no")
+    end
+
+    if mp.get_property_native("load-positioning") ~= nil then
+        table.insert(args, "--load-positioning=no")
+    end
+
+    if mp.get_property_native("load-commands") ~= nil then
+        table.insert(args, "--load-commands=no")
+    end
+
+    if mp.get_property_native("clipboard-backends") ~= nil then
+        table.insert(args, "--clipboard-backends-clr")
+    elseif mp.get_property_native("clipboard-enable") ~= nil then
+        table.insert(args, "--clipboard-enable=no")
+    end
 
     if not pre_0_30_0 then
         table.insert(args, "--sws-allow-zimg=no")
