@@ -915,14 +915,16 @@ function output_name(idx, storyboard, atlas_idx)
     return options.thumbnail .. ".ytdl-thumbx" .. tostring(math.floor(thumb_idx / storyboard.divisor)) .. ".bgra"
 end
 
-local function get_thumb(atlas_path, atlas_idx, storyboard, thumbnail_size, total)
+local function get_thumb(atlas_path, atlas_idx, storyboard, thumbnail_size, total, storyboard_scale)
     local atlas = io.open(atlas_path, "rb")
     local atlas_filesize = atlas:seek("end")
-    local atlas_pictures = math.floor(atlas_filesize / (4 * thumbnail_size.w * thumbnail_size.h))
+    local atlas_pictures = math.floor(atlas_filesize / (4 * thumbnail_size.w * thumbnail_size.h)) --wrong number of thumbnails?
     local stride = 4 * thumbnail_size.w * math.min(storyboard.cols, atlas_pictures)
+    print("stride", stride)
+    print("atlas_pictures", atlas_pictures)
     for pic = 0, atlas_pictures-1 do
         local x_start = (pic % storyboard.cols) * thumbnail_size.w
-        local y_start = math.floor(pic / storyboard.cols) * thumbnail_size.h
+        local y_start = math.floor(pic / storyboard.rows) * thumbnail_size.h --rows or cols here?
         print("pic", pic, "atlas_idx", atlas_idx)
         local filename = output_name(pic, storyboard, atlas_idx)
         if filename ~= nil then
@@ -947,7 +949,7 @@ local function get_thumb(atlas_path, atlas_idx, storyboard, thumbnail_size, tota
     return total
 end
 
-local function fetch_fragment(storyboard, i, thumbnail_size, total)
+local function fetch_fragment(storyboard, i, thumbnail_size, total, storyboard_scale)
     print("FRAGGGG", i)
     print("graggg", mp.utils.format_json(storyboard.fragments), storyboard.fragments[i])
     if not storyboard.fragments[i] then return end
@@ -962,7 +964,7 @@ local function fetch_fragment(storyboard, i, thumbnail_size, total)
         --"--vf="..vf_string(filters_all, true),
         "--sws-allow-zimg=no", "--sws-fast=yes", "--sws-scaler=fast-bilinear",
         --"--video-rotate="..last_rotate,
-        "--vf-add=format=bgra,scale="..(thumbnail_size.w * storyboard.rows)..":"..(thumbnail_size.h * storyboard.cols),
+        "--vf-add=format=bgra,scale=iw*"..(storyboard_scale.w)..":ih*"..(storyboard_scale.h),
         "--ovc=rawvideo", "--of=rawvideo", "--ofopts=update=1", "--o="..options.thumbnail..".ytdl"
     }
     -- TODO: use stdout?
@@ -977,8 +979,8 @@ local function fetch_fragment(storyboard, i, thumbnail_size, total)
                 mp.msg.error("mpv thumbnail download failed")
             else
                 print("mpv thumbnail download success")
-                total = get_thumb(options.thumbnail..".ytdl", i, storyboard, thumbnail_size, total)
-                fetch_fragment(storyboard, i+1, thumbnail_size, total)
+                total = get_thumb(options.thumbnail..".ytdl", i, storyboard, thumbnail_size, total, storyboard_scale)
+                fetch_fragment(storyboard, i+1, thumbnail_size, total, storyboard_scale)
             end
         end
     )
@@ -1082,7 +1084,7 @@ local function file_load()
                         for k,v in pairs(storyboard.fragments[1]) do
                             print(k,v)
                         end
-                        fetch_fragment(storyboard, 1, {w=real_w, h=real_h}, 0)
+                        fetch_fragment(storyboard, 1, {w=real_w, h=real_h}, 0, storyboard_scale)
                     end
                 end
                 --callback()
