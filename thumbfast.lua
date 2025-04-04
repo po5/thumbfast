@@ -39,7 +39,7 @@ local options = {
     quit_after_inactivity = 0,
 
     -- Enable on network playback
-    network = false,
+    network = true,
 
     -- Enable on audio playback
     audio = false,
@@ -68,7 +68,7 @@ function subprocess(args, async, callback)
 
     if not pre_0_30_0 then
         if async then
-            return mp.command_native_async({name = "subprocess", playback_only = true, args = args, env = "PATH="..os.getenv("PATH")}, callback)
+            return mp.command_native_async({name = "subprocess", playback_only = true, capture_stdout=true, args = args, env = "PATH="..os.getenv("PATH")}, callback)
         else
             return mp.command_native({name = "subprocess", playback_only = false, capture_stdout = true, args = args, env = "PATH="..os.getenv("PATH")})
         end
@@ -141,6 +141,7 @@ local force_disabled = false
 local spawn_waiting = false
 local spawn_working = false
 local script_written = false
+local thumbnail_delta = 1
 
 local dirty = false
 
@@ -261,6 +262,8 @@ local unique = mp.utils.getpid()
 
 options.socket = options.socket .. unique
 options.thumbnail = options.thumbnail .. unique
+
+local thumbnail_path = options.thumbnail
 
 if options.direct_io then
     if os_name == "windows" then
@@ -413,7 +416,7 @@ local function info(w, h)
         info_timer = mp.add_timeout(0.05, function() info(w, h) end)
     end
 
-    local json, err = mp.utils.format_json({width=w * options.scale_factor, height=h * options.scale_factor, scale_factor=options.scale_factor, disabled=disabled, available=true, socket=options.socket, thumbnail=options.thumbnail, overlay_id=options.overlay_id})
+    local json, err = mp.utils.format_json({width=w * options.scale_factor, height=h * options.scale_factor, scale_factor=options.scale_factor, disabled=disabled, available=true, socket=options.socket, thumbnail=options.thumbnail, overlay_id=options.overlay_id}) -- TODO: add storyboard info
     if pre_0_30_0 then
         mp.command_native({"script-message", "thumbfast-info", json})
     else
@@ -427,8 +430,8 @@ local function remove_thumbnail_files()
         file = nil
         file_bytes = 0
     end
-    os.remove(options.thumbnail)
-    os.remove(options.thumbnail..".bgra")
+    os.remove(thumbnail_path)
+    os.remove(thumbnail_path..".bgra")
 end
 
 local activity_timer
@@ -453,9 +456,13 @@ local function spawn(time)
     end
 
     remove_thumbnail_files()
+    thumbnail_path = options.thumbnail
+    -- are we spawning a real thumbnail process for yt vids? I hope not
 
     local vid = properties["vid"]
     has_vid = vid or 0
+
+    -- TODO: add filtered ytdl-raw-options, especially for 'cookies' option
 
     local args = {
         mpv_path, "--no-config", "--msg-level=all=no", "--idle", "--pause", "--keep-open=always", "--really-quiet", "--no-terminal",
@@ -463,11 +470,14 @@ local function spawn(time)
         "--edition="..(properties["edition"] or "auto"), "--vid="..(vid or "auto"), "--no-sub", "--no-audio",
         "--start="..time, allow_fast_seek and "--hr-seek=no" or "--hr-seek=yes",
         "--ytdl-format=worst", "--demuxer-readahead-secs=0", "--demuxer-max-bytes=128KiB",
+        "--http-header-fields="..(properties["http-header-fields"] or ""), -- does this actually work well with SVP?
+        "--cookies="..(properties["cookies"] or "no"),
+        "--cookies-file="..(properties["cookies-file"] or ""),
         "--vd-lavc-skiploopfilter=all", "--vd-lavc-software-fallback=1", "--vd-lavc-fast", "--vd-lavc-threads=2", "--hwdec="..(options.hwdec and "auto" or "no"),
         "--vf="..vf_string(filters_all, true),
         "--sws-scaler=fast-bilinear",
         "--video-rotate="..last_rotate,
-        "--ovc=rawvideo", "--of=image2", "--ofopts=update=1", "--o="..options.thumbnail
+        "--ovc=rawvideo", "--of=image2", "--ofopts=update=1", "--o="..thumbnail_path
     }
 
     if not pre_0_30_0 then
@@ -593,16 +603,17 @@ local function run(command)
 end
 
 local function draw(w, h, script)
+    print("wwwwwww", w, show_thumbnail, thumbnail_path..".bgra")
     if not w or not show_thumbnail then return end
     if x ~= nil then
         local scale_w, scale_h = options.scale_factor ~= 1 and (w * options.scale_factor) or nil, options.scale_factor ~= 1 and (h * options.scale_factor) or nil
         if pre_0_30_0 then
-            mp.command_native({"overlay-add", options.overlay_id, x, y, options.thumbnail..".bgra", 0, "bgra", w, h, (4*w), scale_w, scale_h})
+            mp.command_native({"overlay-add", options.overlay_id, x, y, thumbnail_path..".bgra", 0, "bgra", w, h, (4*w), scale_w, scale_h})
         else
-            mp.command_native_async({"overlay-add", options.overlay_id, x, y, options.thumbnail..".bgra", 0, "bgra", w, h, (4*w), scale_w, scale_h}, function() end)
+            mp.command_native_async({"overlay-add", options.overlay_id, x, y, thumbnail_path..".bgra", 0, "bgra", w, h, (4*w), scale_w, scale_h}, function() end)
         end
     elseif script then
-        local json, err = mp.utils.format_json({width=w, height=h, scale_factor=options.scale_factor, x=x, y=y, socket=options.socket, thumbnail=options.thumbnail, overlay_id=options.overlay_id})
+        local json, err = mp.utils.format_json({width=w, height=h, scale_factor=options.scale_factor, x=x, y=y, socket=options.socket, thumbnail=thumbnail_path, overlay_id=options.overlay_id})
         mp.commandv("script-message-to", script, "thumbfast-render", json)
     end
 end
@@ -682,14 +693,14 @@ local function check_new_thumb()
     -- validity but before actually moving the file, so move to a temporary
     -- location before validity check to make sure everything stays consistant
     -- and valid thumbnails don't get overwritten by invalid ones
-    local tmp = options.thumbnail..".tmp"
-    move_file(options.thumbnail, tmp)
+    local tmp = thumbnail_path..".tmp"
+    move_file(thumbnail_path, tmp)
     local finfo = mp.utils.file_info(tmp)
     if not finfo then return false end
     spawn_waiting = false
     local w, h = real_res(effective_w, effective_h, finfo.size)
     if w then -- only accept valid thumbnails
-        move_file(tmp, options.thumbnail..".bgra")
+        move_file(tmp, thumbnail_path..".bgra")
 
         real_w, real_h = w, h
         if real_w and (real_w ~= last_real_w or real_h ~= last_real_h) then
@@ -764,6 +775,7 @@ local function thumb(time, r_x, r_y, script)
     if last_x ~= x or last_y ~= y or not show_thumbnail then
         show_thumbnail = true
         last_x, last_y = x, y
+        print("drrrr", time)
         draw(real_w, real_h, script)
     end
 
@@ -776,7 +788,10 @@ local function thumb(time, r_x, r_y, script)
 
     if time == last_seek_time then return end
     last_seek_time = time
-    if not spawned then spawn(time) end
+    thumb_index = math.floor(time / thumbnail_delta)
+    thumbnail_path = options.thumbnail .. ".ytdl-thumbx" .. tostring(thumb_index)
+    print("thumbnail_path", thumbnail_path)
+    if not spawned then spawn(time) end -- TODO: skip when ytdl on?
     request_seek()
     if not file_timer:is_enabled() then file_timer:resume() end
 end
@@ -888,6 +903,87 @@ local function sync_changes(prop, val)
     dirty = true
 end
 
+function output_name(idx, storyboard, atlas_idx)
+    --local thumb_idx = idx
+    --local atlas_idx = math.floor(thumb_idx * storyboard.divisor /(storyboard.cols*storyboard.rows))
+    --print("idxidxidx", idx)
+    local thumb_idx = (atlas_idx - 1) * storyboard.cols * storyboard.rows + idx
+    print("thumb_idx", thumb_idx)
+    if thumb_idx % storyboard.divisor ~= 0 then
+        return nil
+    end
+    return options.thumbnail .. ".ytdl-thumbx" .. tostring(math.floor(thumb_idx / storyboard.divisor)) .. ".bgra"
+end
+
+local function get_thumb(atlas_path, atlas_idx, storyboard, thumbnail_size, total)
+    local atlas = io.open(atlas_path, "rb")
+    local atlas_filesize = atlas:seek("end")
+    local atlas_pictures = math.floor(atlas_filesize / (4 * thumbnail_size.w * thumbnail_size.h))
+    local stride = 4 * thumbnail_size.w * math.min(storyboard.cols, atlas_pictures)
+    for pic = 0, atlas_pictures-1 do
+        local x_start = (pic % storyboard.cols) * thumbnail_size.w
+        local y_start = math.floor(pic / storyboard.cols) * thumbnail_size.h
+        print("pic", pic, "atlas_idx", atlas_idx)
+        local filename = output_name(pic, storyboard, atlas_idx)
+        if filename ~= nil then
+            local thumb_file = io.open(filename, "wb")
+            for line = 0, thumbnail_size.h - 1 do
+                atlas:seek("set", 4 * x_start + (y_start + line) * stride)
+                local data = atlas:read(thumbnail_size.w * 4)
+                if data ~= nil then
+                    thumb_file:write(data)
+                end
+            end
+            total = total + 1
+            thumb_file:close()
+            if atlas_idx == 1 then
+                mp.command_native({"overlay-add", pic, pic*60, pic*60, filename, 0, "bgra", thumbnail_size.w, thumbnail_size.h, (4*thumbnail_size.w)})
+            end
+        end
+    end
+    atlas:close()
+    print("get_thumb end")
+    print("total", total)
+    return total
+end
+
+local function fetch_fragment(storyboard, i, thumbnail_size, total)
+    print("FRAGGGG", i)
+    print("graggg", mp.utils.format_json(storyboard.fragments), storyboard.fragments[i])
+    if not storyboard.fragments[i] then return end
+
+    -- TODO: scale to desired thumbnail size
+    local args = {
+        mpv_path, storyboard.fragments[i].url, "--no-config", "--msg-level=all=no", "--really-quiet", "--no-terminal", "--vo=null",
+        "--frames=1",
+        "--no-sub", "--no-audio", "--hr-seek=no", "--sub-font-provider=none", "--embeddedfonts=no",
+        "--no-ytdl", "--demuxer-readahead-secs=0", "--demuxer-max-bytes=128KiB",
+        "--vd-lavc-skiploopfilter=all", "--vd-lavc-software-fallback=1", "--vd-lavc-fast", "--vd-lavc-threads=2", --"--hwdec="..(options.hwdec and "auto" or "no"),
+        --"--vf="..vf_string(filters_all, true),
+        "--sws-allow-zimg=no", "--sws-fast=yes", "--sws-scaler=fast-bilinear",
+        --"--video-rotate="..last_rotate,
+        "--vf-add=format=bgra,scale="..(thumbnail_size.w * storyboard.rows)..":"..(thumbnail_size.h * storyboard.cols),
+        "--ovc=rawvideo", "--of=rawvideo", "--ofopts=update=1", "--o="..options.thumbnail..".ytdl"
+    }
+    -- TODO: use stdout?
+
+    if os_name == "Mac" then
+        table.insert(args, "--macos-app-activation-policy=prohibited")
+    end
+
+    subprocess(args, true,
+        function(success, result)
+            if success == false or result.status ~= 0 then
+                mp.msg.error("mpv thumbnail download failed")
+            else
+                print("mpv thumbnail download success")
+                total = get_thumb(options.thumbnail..".ytdl", i, storyboard, thumbnail_size, total)
+                fetch_fragment(storyboard, i+1, thumbnail_size, total)
+            end
+        end
+    )
+end
+
 local function file_load()
     clear()
     spawned = false
@@ -902,6 +998,105 @@ local function file_load()
 
     calc_dimensions()
     info(effective_w, effective_h)
+    if disabled then return end
+
+    print("network", options.network)
+    if options.network then
+        print("headers", properties["http-header-fields"] or "")
+        -- TODO: support more than just youtube... this should also work out of the box for twitch vods?
+        local video_path = properties["path"] or ""
+        local video_referer = string.match(properties["http-header-fields"] or "", "Referer:([^,]+)") or ""
+        local urls = {
+            "^ytdl://([%w-_]+)",
+            "^https?://youtu%.be/([%w-_]+)",
+            "^https?://w?w?w?%.?youtube%.com/v/([%w-_]+)",
+            "/watch.*[?&]v=([%w-_]+)",
+            "/embed/([%w-_]+)"
+        }
+        local youtube_id = nil
+        for i, url in ipairs(urls) do
+            youtube_id = youtube_id or string.match(video_path, url) or string.match(video_referer, url)
+            if youtube_id then break end
+        end
+
+        --print("youtube_id", youtube_id)
+        if youtube_id and string.len(youtube_id) >= 11 then
+            youtube_id = string.sub(youtube_id, 1, 11)
+            -- TODO: find yt-dlp path
+            local sb_cmd = {"yt-dlp", "--format", "sb0", "--dump-json", "--no-playlist",
+                            "--extractor-args", "youtube:skip=hls,dash,translated_subs", -- yt speedup
+                            "--", "https://www.youtube.com/watch?v="..youtube_id}
+
+            subprocess(sb_cmd, true, function(success, sb_json)
+                print("resp1")
+                if success and sb_json.status == 0 then
+                    local sb = mp.utils.parse_json(sb_json.stdout)
+                    print("resp2")
+                    if sb ~= nil and sb.duration and sb.width and sb.height and sb.fragments and #sb.fragments > 0 then
+                        print("resp3")
+                        local storyboard = {}
+                        local thumbnail_count = 0
+                        local thumbnail_size = {w=0, h=0}
+                        storyboard.fragments = sb.fragments
+                        storyboard.fragment_base_url = sb.fragment_base_url
+                        storyboard.rows = sb.rows or 5
+                        storyboard.cols = sb.columns or 5
+
+                        if sb.fps then
+                            thumbnail_count = math.floor(sb.fps * sb.duration + 0.5) -- round
+                            -- hack: youtube always adds 1 black frame at the end...
+                            if sb.extractor == "youtube" then
+                                thumbnail_count = thumbnail_count - 1
+                            end
+                        else
+                            -- estimate the count of thumbnails
+                            -- assume first atlas is always full
+                            thumbnail_delta = sb.fragments[1].duration / (storyboard.rows*storyboard.cols)
+                            thumbnail_count = math.floor(sb.duration / thumbnail_delta)
+                        end
+
+                        -- Storyboard upscaling factor
+                        local scale = properties["display-hidpi-scale"] or 1
+                        if sb.width / sb.height > options.max_width / options.max_height then
+                            real_w = math.floor(options.max_width * scale + 0.5)
+                            real_h = math.floor(sb.height / sb.width * real_w + 0.5)
+                        else
+                            real_h = math.floor(options.max_height * scale + 0.5)
+                            real_w = math.floor(sb.width / sb.height * real_h + 0.5)
+                        end
+                        local storyboard_scale = {w=real_w/sb.width, h=real_h/sb.height}
+                        info(real_w, real_h)
+                        print("real_wreal_w", real_w)
+                        storyboard.scale = scale
+
+                        local divisor = 1 -- only save every n-th thumbnail
+                        if options.storyboard_max_thumbnail_count then
+                            divisor = math.ceil(thumbnail_count / options.storyboard_max_thumbnail_count)
+                        end
+                        storyboard.divisor = divisor
+                        thumbnail_count = math.floor(thumbnail_count / divisor)
+                        thumbnail_delta = sb.duration / thumbnail_count
+
+                        print("Storyboard info acquired! " .. thumbnail_count)
+                        print("thumbnail_delta", thumbnail_delta)
+                        for k,v in pairs(storyboard.fragments[1]) do
+                            print(k,v)
+                        end
+                        fetch_fragment(storyboard, 1, {w=real_w, h=real_h}, 0)
+                    end
+                end
+                --callback()
+                print("done")
+            end)
+
+        end
+    end
+
+    spawned = false
+    if options.spawn_first then
+        spawn(mp.get_property_number("time-pos", 0))
+        first_file = true
+    end
 end
 
 local function shutdown()
@@ -932,6 +1127,9 @@ mp.observe_property("video-params", "native", update_property_dirty)
 mp.observe_property("vf", "native", update_property_dirty)
 mp.observe_property("tone-mapping", "native", update_property_dirty)
 mp.observe_property("demuxer-via-network", "native", update_property)
+mp.observe_property("http-header-fields", "string", update_property)
+mp.observe_property("cookies", "string", update_property)
+mp.observe_property("cookies-file", "string", update_property)
 mp.observe_property("stream-open-filename", "native", update_property)
 mp.observe_property("macos-app-activation-policy", "native", update_property)
 mp.observe_property("current-vo", "native", update_property)
