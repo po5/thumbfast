@@ -964,7 +964,7 @@ local function fetch_fragment(storyboard, i, thumbnail_size, total, storyboard_s
         --"--vf="..vf_string(filters_all, true),
         "--sws-allow-zimg=no", "--sws-fast=yes", "--sws-scaler=fast-bilinear",
         --"--video-rotate="..last_rotate,
-        "--vf-add=format=bgra,scale=iw*"..(storyboard_scale.w)..":ih*"..(storyboard_scale.h),
+        "--vf-add=format=bgra,scale=trunc(iw*"..(storyboard_scale.w).."+0.5):trunc(ih*"..(storyboard_scale.h).."+0.5)",
         "--ovc=rawvideo", "--of=rawvideo", "--ofopts=update=1", "--o="..options.thumbnail..".ytdl"
     }
     -- TODO: use stdout?
