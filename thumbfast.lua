@@ -924,7 +924,7 @@ local function get_thumb(atlas_path, atlas_idx, storyboard, thumbnail_size, tota
     print("atlas_pictures", atlas_pictures)
     for pic = 0, atlas_pictures-1 do
         local x_start = (pic % storyboard.cols) * thumbnail_size.w
-        local y_start = math.floor(pic / storyboard.rows) * thumbnail_size.h --rows or cols here?
+        local y_start = math.floor(pic / storyboard.cols) * thumbnail_size.h
         print("pic", pic, "atlas_idx", atlas_idx)
         local filename = output_name(pic, storyboard, atlas_idx)
         if filename ~= nil then
