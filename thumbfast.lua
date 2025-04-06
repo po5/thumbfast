@@ -81,6 +81,60 @@ function subprocess(args, async, callback)
     end
 end
 
+local all_processes = {}
+local process_queue = {}
+local active_processes = 0
+local max_processes = 5
+
+local function spawn_one(args, callback)
+    if active_processes < max_processes then
+        active_processes = active_processes + 1
+        subprocess(args, true, callback)
+        for i, process in ipairs(process_queue) do
+            if process.args == args then
+                table.remove(process_queue, i)
+                break
+            end
+        end
+        for i, process in ipairs(all_processes) do
+            if process.args == args then
+                all_processes[i] = nil
+                break
+            end
+        end
+    end
+end
+
+local function spawn_queued_process(args, callback)
+    local function wrap_callback(args, callback)
+        return function(...)
+            callback(...)
+            active_processes = active_processes - 1
+            if #process_queue > 0 then
+                spawn_one(process_queue[1].args, process_queue[1].callback)
+            end
+        end
+    end
+    local wrapped_callback = wrap_callback(args, callback)
+    local process = {args=args, callback=wrapped_callback}
+    table.insert(process_queue, process)
+    table.insert(all_processes, process)
+    spawn_one(args, wrapped_callback)
+end
+
+local function prioritize_process(atlas_index)
+    local target_process = all_processes[atlas_index]
+    if not target_process then return end
+
+    for i, process in ipairs(process_queue) do
+        if process.args == target_process.args then
+            table.remove(process_queue, i)
+            table.insert(process_queue, 1, process)
+            break
+        end
+    end
+end
+
 local winapi = {}
 if options.direct_io then
     local ffi_loaded, ffi = pcall(require, "ffi")
@@ -142,6 +196,7 @@ local spawn_waiting = false
 local spawn_working = false
 local script_written = false
 local thumbnail_delta = 1
+local thumb_count_per_storyboard = 1
 
 local dirty = false
 
@@ -611,7 +666,6 @@ end
 local function draw(w, h, script)
     if not w or not show_thumbnail then return end
     if x ~= nil then
-        print("thumbnail_path..", thumbnail_path)
         local scale_w, scale_h = options.scale_factor ~= 1 and (w * options.scale_factor) or nil, options.scale_factor ~= 1 and (h * options.scale_factor) or nil
         if pre_0_30_0 then
             mp.command_native({"overlay-add", options.overlay_id, x, y, thumbnail_path..".bgra", 0, "bgra", w, h, (4*w), scale_w, scale_h})
@@ -780,6 +834,8 @@ local function thumb(time, r_x, r_y, script)
     if thumbnail_delta then
         -- TODO: do we need to do something special if the thumbnail doesn't exist?
         thumb_index = math.floor(time / thumbnail_delta)
+        atlas_index = math.ceil(thumb_index / thumb_count_per_storyboard)
+        prioritize_process(atlas_index)
         thumbnail_path = options.thumbnail .. ".ytdl-thumbx" .. tostring(thumb_index)
     end
 
@@ -916,10 +972,10 @@ function output_name(idx, storyboard, atlas_idx)
     return options.thumbnail .. ".ytdl-thumbx" .. tostring(thumb_idx) .. ".bgra"
 end
 
-local function get_thumb(atlas_path, atlas_idx, storyboard, thumbnail_size, total, storyboard_scale)
+local function get_thumb(atlas_path, atlas_idx, storyboard, thumbnail_size, storyboard_scale)
     local atlas = io.open(atlas_path, "rb")
     local atlas_filesize = atlas:seek("end")
-    local atlas_pictures = math.floor(atlas_filesize / (4 * thumbnail_size.w * thumbnail_size.h)) --wrong number of thumbnails?
+    local atlas_pictures = math.floor(atlas_filesize / (4 * thumbnail_size.w * thumbnail_size.h))
     local stride = 4 * thumbnail_size.w * math.min(storyboard.cols, atlas_pictures)
     for pic = 0, atlas_pictures-1 do
         local x_start = (pic % storyboard.cols) * thumbnail_size.w
@@ -934,20 +990,15 @@ local function get_thumb(atlas_path, atlas_idx, storyboard, thumbnail_size, tota
                     thumb_file:write(data)
                 end
             end
-            total = total + 1
             thumb_file:close()
-            if atlas_idx == 1 then
-                mp.command_native({"overlay-add", pic, pic*60, pic*60, filename, 0, "bgra", thumbnail_size.w, thumbnail_size.h, (4*thumbnail_size.w)})
-            end
         end
     end
     atlas:close()
-    return total
+    return
 end
 
-local function fetch_fragment(storyboard, i, thumbnail_size, total, storyboard_scale)
+local function fetch_fragment(storyboard, i, thumbnail_size, storyboard_scale)
     if not storyboard.fragments[i] then return end
-    print("spawn", i)
 
     local args = {
         mpv_path, storyboard.fragments[i].url, "--no-config", "--msg-level=all=no", "--really-quiet", "--no-terminal", "--vo=null",
@@ -966,22 +1017,23 @@ local function fetch_fragment(storyboard, i, thumbnail_size, total, storyboard_s
         table.insert(args, "--macos-app-activation-policy=prohibited")
     end
 
-    subprocess(args, true,
+    spawn_queued_process(args,
         function(success, result)
             if success == false or result.status ~= 0 then
-                mp.msg.error("mpv thumbnail download failed")
+                mp.msg.error("thumbfast: storyboard download failed", i)
             else
-                total = get_thumb(options.thumbnail..".ytdl"..tostring(i), i, storyboard, thumbnail_size, total, storyboard_scale)
+                get_thumb(options.thumbnail..".ytdl"..tostring(i), i, storyboard, thumbnail_size, storyboard_scale)
             end
         end
     )
+
     -- TODO: set max n of active processes? I'm scared of spawning a lot of mpv processes when playing a 10 hour stream VOD... yeah this vid is 63 processes that's already too much https://www.youtube.com/watch?v=fKM2NYABFFc
     -- I need some sort of a queue function.
     -- create a list that will contain a representation of each subprocess call to be made
     -- when a user hovers on the timeline, look up on a copy of the table which value corresponds to the requested index. stick that value at the start of the real table, and deduplicate it. this lets us prioritize fragments the user wants to see.
     -- needs to be tested on a really long video, or with an artificially introduced delay, so we can check that the prioritization actually works. we also need to be sure that hovering on the timeline at all WORKS and lets us display thumbnails even though not all have been fetched yet.
     -- when a fragment has been fetched, it sets itself to nil in the list copy, and is removed from the processing pile.
-    fetch_fragment(storyboard, i+1, thumbnail_size, total, storyboard_scale)
+    fetch_fragment(storyboard, i+1, thumbnail_size, storyboard_scale)
 end
 
 local function setup_storyboards()
@@ -1032,6 +1084,7 @@ local function setup_storyboards()
                     storyboard.fragment_base_url = sb.fragment_base_url
                     storyboard.rows = sb.rows or 5
                     storyboard.cols = sb.columns or 5
+                    thumb_count_per_storyboard = storyboard.rows * storyboard.cols
 
                     if sb.fps then
                         thumbnail_count = math.floor(sb.fps * sb.duration + 0.5) -- round
@@ -1065,7 +1118,7 @@ local function setup_storyboards()
 
                     thumbnail_delta = sb.duration / thumbnail_count
 
-                    fetch_fragment(storyboard, 1, thumbnail_size, 0, storyboard_scale)
+                    fetch_fragment(storyboard, 1, thumbnail_size, storyboard_scale)
                 end
             end
         end)
