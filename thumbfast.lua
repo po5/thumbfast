@@ -603,7 +603,6 @@ local function run(command)
 end
 
 local function draw(w, h, script)
-    print("wwwwwww", w, show_thumbnail, thumbnail_path..".bgra")
     if not w or not show_thumbnail then return end
     if x ~= nil then
         local scale_w, scale_h = options.scale_factor ~= 1 and (w * options.scale_factor) or nil, options.scale_factor ~= 1 and (h * options.scale_factor) or nil
@@ -775,7 +774,6 @@ local function thumb(time, r_x, r_y, script)
     if last_x ~= x or last_y ~= y or not show_thumbnail then
         show_thumbnail = true
         last_x, last_y = x, y
-        print("drrrr", time)
         draw(real_w, real_h, script)
     end
 
@@ -790,7 +788,6 @@ local function thumb(time, r_x, r_y, script)
     last_seek_time = time
     thumb_index = math.floor(time / thumbnail_delta)
     thumbnail_path = options.thumbnail .. ".ytdl-thumbx" .. tostring(thumb_index)
-    print("thumbnail_path", thumbnail_path)
     if not spawned then spawn(time) end -- TODO: skip when ytdl on?
     request_seek()
     if not file_timer:is_enabled() then file_timer:resume() end
@@ -904,15 +901,8 @@ local function sync_changes(prop, val)
 end
 
 function output_name(idx, storyboard, atlas_idx)
-    --local thumb_idx = idx
-    --local atlas_idx = math.floor(thumb_idx * storyboard.divisor /(storyboard.cols*storyboard.rows))
-    --print("idxidxidx", idx)
     local thumb_idx = (atlas_idx - 1) * storyboard.cols * storyboard.rows + idx
-    print("thumb_idx", thumb_idx)
-    if thumb_idx % storyboard.divisor ~= 0 then
-        return nil
-    end
-    return options.thumbnail .. ".ytdl-thumbx" .. tostring(math.floor(thumb_idx / storyboard.divisor)) .. ".bgra"
+    return options.thumbnail .. ".ytdl-thumbx" .. tostring(thumb_idx) .. ".bgra"
 end
 
 local function get_thumb(atlas_path, atlas_idx, storyboard, thumbnail_size, total, storyboard_scale)
@@ -920,12 +910,9 @@ local function get_thumb(atlas_path, atlas_idx, storyboard, thumbnail_size, tota
     local atlas_filesize = atlas:seek("end")
     local atlas_pictures = math.floor(atlas_filesize / (4 * thumbnail_size.w * thumbnail_size.h)) --wrong number of thumbnails?
     local stride = 4 * thumbnail_size.w * math.min(storyboard.cols, atlas_pictures)
-    print("stride", stride)
-    print("atlas_pictures", atlas_pictures)
     for pic = 0, atlas_pictures-1 do
         local x_start = (pic % storyboard.cols) * thumbnail_size.w
         local y_start = math.floor(pic / storyboard.cols) * thumbnail_size.h
-        print("pic", pic, "atlas_idx", atlas_idx)
         local filename = output_name(pic, storyboard, atlas_idx)
         if filename ~= nil then
             local thumb_file = io.open(filename, "wb")
@@ -944,17 +931,12 @@ local function get_thumb(atlas_path, atlas_idx, storyboard, thumbnail_size, tota
         end
     end
     atlas:close()
-    print("get_thumb end")
-    print("total", total)
     return total
 end
 
 local function fetch_fragment(storyboard, i, thumbnail_size, total, storyboard_scale)
-    print("FRAGGGG", i)
-    print("graggg", mp.utils.format_json(storyboard.fragments), storyboard.fragments[i])
     if not storyboard.fragments[i] then return end
 
-    -- TODO: scale to desired thumbnail size
     local args = {
         mpv_path, storyboard.fragments[i].url, "--no-config", "--msg-level=all=no", "--really-quiet", "--no-terminal", "--vo=null",
         "--frames=1",
@@ -964,10 +946,9 @@ local function fetch_fragment(storyboard, i, thumbnail_size, total, storyboard_s
         --"--vf="..vf_string(filters_all, true),
         "--sws-allow-zimg=no", "--sws-fast=yes", "--sws-scaler=fast-bilinear",
         --"--video-rotate="..last_rotate,
-        "--vf-add=format=bgra,scale=trunc(iw*"..(storyboard_scale.w).."+0.5):trunc(ih*"..(storyboard_scale.h).."+0.5)",
+        "--vf-add=format=bgra,scale=round(iw*"..storyboard_scale.w.."):round(ih*"..storyboard_scale.h..")",
         "--ovc=rawvideo", "--of=rawvideo", "--ofopts=update=1", "--o="..options.thumbnail..".ytdl"
     }
-    -- TODO: use stdout?
 
     if os_name == "Mac" then
         table.insert(args, "--macos-app-activation-policy=prohibited")
@@ -978,7 +959,6 @@ local function fetch_fragment(storyboard, i, thumbnail_size, total, storyboard_s
             if success == false or result.status ~= 0 then
                 mp.msg.error("mpv thumbnail download failed")
             else
-                print("mpv thumbnail download success")
                 total = get_thumb(options.thumbnail..".ytdl", i, storyboard, thumbnail_size, total, storyboard_scale)
                 fetch_fragment(storyboard, i+1, thumbnail_size, total, storyboard_scale)
             end
@@ -1002,9 +982,7 @@ local function file_load()
     info(effective_w, effective_h)
     if disabled then return end
 
-    print("network", options.network)
     if options.network then
-        print("headers", properties["http-header-fields"] or "")
         -- TODO: support more than just youtube... this should also work out of the box for twitch vods?
         local video_path = properties["path"] or ""
         local video_referer = string.match(properties["http-header-fields"] or "", "Referer:([^,]+)") or ""
@@ -1021,7 +999,6 @@ local function file_load()
             if youtube_id then break end
         end
 
-        --print("youtube_id", youtube_id)
         if youtube_id and string.len(youtube_id) >= 11 then
             youtube_id = string.sub(youtube_id, 1, 11)
             -- TODO: find yt-dlp path
@@ -1030,15 +1007,11 @@ local function file_load()
                             "--", "https://www.youtube.com/watch?v="..youtube_id}
 
             subprocess(sb_cmd, true, function(success, sb_json)
-                print("resp1")
                 if success and sb_json.status == 0 then
                     local sb = mp.utils.parse_json(sb_json.stdout)
-                    print("resp2")
                     if sb ~= nil and sb.duration and sb.width and sb.height and sb.fragments and #sb.fragments > 0 then
-                        print("resp3")
                         local storyboard = {}
                         local thumbnail_count = 0
-                        local thumbnail_size = {w=0, h=0}
                         storyboard.fragments = sb.fragments
                         storyboard.fragment_base_url = sb.fragment_base_url
                         storyboard.rows = sb.rows or 5
@@ -1053,7 +1026,7 @@ local function file_load()
                         else
                             -- estimate the count of thumbnails
                             -- assume first atlas is always full
-                            thumbnail_delta = sb.fragments[1].duration / (storyboard.rows*storyboard.cols)
+                            thumbnail_delta = sb.fragments[1].duration / (storyboard.rows * storyboard.cols)
                             thumbnail_count = math.floor(sb.duration / thumbnail_delta)
                         end
 
@@ -1067,28 +1040,16 @@ local function file_load()
                             real_w = math.floor(sb.width / sb.height * real_h + 0.5)
                         end
                         local storyboard_scale = {w=real_w/sb.width, h=real_h/sb.height}
+                        local thumbnail_size = {w=real_w, h=real_h}
                         info(real_w, real_h)
-                        print("real_wreal_w", real_w)
+
                         storyboard.scale = scale
 
-                        local divisor = 1 -- only save every n-th thumbnail
-                        if options.storyboard_max_thumbnail_count then
-                            divisor = math.ceil(thumbnail_count / options.storyboard_max_thumbnail_count)
-                        end
-                        storyboard.divisor = divisor
-                        thumbnail_count = math.floor(thumbnail_count / divisor)
                         thumbnail_delta = sb.duration / thumbnail_count
 
-                        print("Storyboard info acquired! " .. thumbnail_count)
-                        print("thumbnail_delta", thumbnail_delta)
-                        for k,v in pairs(storyboard.fragments[1]) do
-                            print(k,v)
-                        end
-                        fetch_fragment(storyboard, 1, {w=real_w, h=real_h}, 0, storyboard_scale)
+                        fetch_fragment(storyboard, 1, thumbnail_size, 0, storyboard_scale)
                     end
                 end
-                --callback()
-                print("done")
             end)
 
         end
