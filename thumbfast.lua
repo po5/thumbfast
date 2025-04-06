@@ -434,6 +434,10 @@ local function remove_thumbnail_files()
     os.remove(thumbnail_path..".bgra")
 end
 
+local function remove_storyboard_files()
+    -- TODO
+end
+
 local activity_timer
 
 local function spawn(time)
@@ -450,12 +454,13 @@ local function spawn(time)
     end
 
     local open_filename = properties["stream-open-filename"]
-    local ytdl = open_filename and properties["demuxer-via-network"] and path ~= open_filename
-    if ytdl then
+    local forced_path = open_filename and path ~= open_filename
+    if forced_path then
         path = open_filename
     end
 
     remove_thumbnail_files()
+    remove_storyboard_files()
     thumbnail_path = options.thumbnail
     -- are we spawning a real thumbnail process for yt vids? I hope not
 
@@ -463,6 +468,7 @@ local function spawn(time)
     has_vid = vid or 0
 
     -- TODO: add filtered ytdl-raw-options, especially for 'cookies' option
+    -- TODO: use native property for cookies and cookies-file??
 
     local args = {
         mpv_path, "--no-config", "--msg-level=all=no", "--idle", "--pause", "--keep-open=always", "--really-quiet", "--no-terminal",
@@ -605,6 +611,7 @@ end
 local function draw(w, h, script)
     if not w or not show_thumbnail then return end
     if x ~= nil then
+        print("thumbnail_path..", thumbnail_path)
         local scale_w, scale_h = options.scale_factor ~= 1 and (w * options.scale_factor) or nil, options.scale_factor ~= 1 and (h * options.scale_factor) or nil
         if pre_0_30_0 then
             mp.command_native({"overlay-add", options.overlay_id, x, y, thumbnail_path..".bgra", 0, "bgra", w, h, (4*w), scale_w, scale_h})
@@ -770,6 +777,12 @@ local function thumb(time, r_x, r_y, script)
         x, y = math.floor(r_x + 0.5), math.floor(r_y + 0.5)
     end
 
+    if thumbnail_delta then
+        -- TODO: do we need to do something special if the thumbnail doesn't exist?
+        thumb_index = math.floor(time / thumbnail_delta)
+        thumbnail_path = options.thumbnail .. ".ytdl-thumbx" .. tostring(thumb_index)
+    end
+
     script_name = script
     if last_x ~= x or last_y ~= y or not show_thumbnail then
         show_thumbnail = true
@@ -786,8 +799,6 @@ local function thumb(time, r_x, r_y, script)
 
     if time == last_seek_time then return end
     last_seek_time = time
-    thumb_index = math.floor(time / thumbnail_delta)
-    thumbnail_path = options.thumbnail .. ".ytdl-thumbx" .. tostring(thumb_index)
     if not spawned then spawn(time) end -- TODO: skip when ytdl on?
     request_seek()
     if not file_timer:is_enabled() then file_timer:resume() end
@@ -936,6 +947,7 @@ end
 
 local function fetch_fragment(storyboard, i, thumbnail_size, total, storyboard_scale)
     if not storyboard.fragments[i] then return end
+    print("spawn", i)
 
     local args = {
         mpv_path, storyboard.fragments[i].url, "--no-config", "--msg-level=all=no", "--really-quiet", "--no-terminal", "--vo=null",
@@ -947,7 +959,7 @@ local function fetch_fragment(storyboard, i, thumbnail_size, total, storyboard_s
         "--sws-allow-zimg=no", "--sws-fast=yes", "--sws-scaler=fast-bilinear",
         --"--video-rotate="..last_rotate,
         "--vf-add=format=bgra,scale=round(iw*"..storyboard_scale.w.."):round(ih*"..storyboard_scale.h..")",
-        "--ovc=rawvideo", "--of=rawvideo", "--ofopts=update=1", "--o="..options.thumbnail..".ytdl"
+        "--ovc=rawvideo", "--of=rawvideo", "--ofopts=update=1", "--o="..options.thumbnail..".ytdl"..tostring(i)
     }
 
     if os_name == "Mac" then
@@ -959,11 +971,107 @@ local function fetch_fragment(storyboard, i, thumbnail_size, total, storyboard_s
             if success == false or result.status ~= 0 then
                 mp.msg.error("mpv thumbnail download failed")
             else
-                total = get_thumb(options.thumbnail..".ytdl", i, storyboard, thumbnail_size, total, storyboard_scale)
-                fetch_fragment(storyboard, i+1, thumbnail_size, total, storyboard_scale)
+                total = get_thumb(options.thumbnail..".ytdl"..tostring(i), i, storyboard, thumbnail_size, total, storyboard_scale)
             end
         end
     )
+    -- TODO: set max n of active processes? I'm scared of spawning a lot of mpv processes when playing a 10 hour stream VOD... yeah this vid is 63 processes that's already too much https://www.youtube.com/watch?v=fKM2NYABFFc
+    -- I need some sort of a queue function.
+    -- create a list that will contain a representation of each subprocess call to be made
+    -- when a user hovers on the timeline, look up on a copy of the table which value corresponds to the requested index. stick that value at the start of the real table, and deduplicate it. this lets us prioritize fragments the user wants to see.
+    -- needs to be tested on a really long video, or with an artificially introduced delay, so we can check that the prioritization actually works. we also need to be sure that hovering on the timeline at all WORKS and lets us display thumbnails even though not all have been fetched yet.
+    -- when a fragment has been fetched, it sets itself to nil in the list copy, and is removed from the processing pile.
+    fetch_fragment(storyboard, i+1, thumbnail_size, total, storyboard_scale)
+end
+
+local function setup_storyboards()
+    if not options.network then return end
+
+    local path = properties["path"]
+    if path == nil then return end
+
+    local open_filename = properties["stream-open-filename"]
+    local forced_path = open_filename and path ~= open_filename -- and properties["demuxer-via-network"]
+    if not forced_path then return end
+
+    remove_thumbnail_files()
+    remove_storyboard_files()
+
+    -- TODO: support more than just youtube... this should also work out of the box for twitch vods?
+    local referer = string.match(properties["http-header-fields"] or "", "Referer:([^,]+)") or "" -- TODO: use native property here
+    -- TODO: youtube shorts pattern
+    -- it may be possible to run the subprocess synchronously so that we can let yt-dlp decide if storyboards are supported at all??? I think this is the best option. I think I may have to call info() with 0 dimensions to make the thumbnail get disabled in the meantime tho.
+    -- something similar to check_new_thumb() may be needed for when we're writing the rgba files? most likely not though, since it's happening in the lua main loop so everything should be done writing already when we reach overlay-add
+    local urls = {
+        "^ytdl://([%w-_]+)",
+        "^https?://youtu%.be/([%w-_]+)",
+        "^https?://w?w?w?%.?youtube%.com/v/([%w-_]+)",
+        "/watch.*[?&]v=([%w-_]+)",
+        "/embed/([%w-_]+)"
+    }
+    local youtube_id = nil
+    for i, url in ipairs(urls) do
+        youtube_id = youtube_id or string.match(path, url) or string.match(referer, url)
+        if youtube_id then break end
+    end
+
+    if youtube_id and string.len(youtube_id) >= 11 then
+        youtube_id = string.sub(youtube_id, 1, 11)
+        -- TODO: find yt-dlp path
+        local sb_cmd = {"yt-dlp", "--format", "sb0", "--dump-json", "--no-playlist",
+                        "--extractor-args", "youtube:skip=hls,dash,translated_subs", -- yt speedup
+                        "--", "https://www.youtube.com/watch?v="..youtube_id}
+
+        subprocess(sb_cmd, true, function(success, sb_json)
+            if success and sb_json.status == 0 then
+                local sb = mp.utils.parse_json(sb_json.stdout)
+                if sb ~= nil and sb.duration and sb.width and sb.height and sb.fragments and #sb.fragments > 0 then
+                    local storyboard = {}
+                    local thumbnail_count = 0
+                    storyboard.fragments = sb.fragments
+                    storyboard.fragment_base_url = sb.fragment_base_url
+                    storyboard.rows = sb.rows or 5
+                    storyboard.cols = sb.columns or 5
+
+                    if sb.fps then
+                        thumbnail_count = math.floor(sb.fps * sb.duration + 0.5) -- round
+                        -- hack: youtube always adds 1 black frame at the end... --is this even true?
+                        if sb.extractor == "youtube" then
+                            thumbnail_count = thumbnail_count - 1
+                        end
+                    else
+                        -- estimate the count of thumbnails
+                        -- assume first atlas is always full
+                        thumbnail_delta = sb.fragments[1].duration / (storyboard.rows * storyboard.cols)
+                        thumbnail_count = math.floor(sb.duration / thumbnail_delta)
+                    end
+
+                    -- Storyboard upscaling factor
+                    -- TODO: shouldn't we set effective_w and effective_h here? that's what calc_dimensions does... look into it.
+                    -- we need to run info()
+                    local scale = properties["display-hidpi-scale"] or 1
+                    if sb.width / sb.height > options.max_width / options.max_height then
+                        real_w = math.floor(options.max_width * scale + 0.5)
+                        real_h = math.floor(sb.height / sb.width * real_w + 0.5)
+                    else
+                        real_h = math.floor(options.max_height * scale + 0.5)
+                        real_w = math.floor(sb.width / sb.height * real_h + 0.5)
+                    end
+                    local storyboard_scale = {w=real_w/sb.width, h=real_h/sb.height}
+                    local thumbnail_size = {w=real_w, h=real_h}
+                    info(real_w, real_h)
+
+                    storyboard.scale = scale
+
+                    thumbnail_delta = sb.duration / thumbnail_count
+
+                    fetch_fragment(storyboard, 1, thumbnail_size, 0, storyboard_scale)
+                end
+            end
+        end)
+        -- we are in a state where we decided yeah let's use the storyboards.
+        return true
+    end
 end
 
 local function file_load()
@@ -978,82 +1086,11 @@ local function file_load()
         info_timer = nil
     end
 
+    if setup_storyboards() then return end
+
     calc_dimensions()
     info(effective_w, effective_h)
     if disabled then return end
-
-    if options.network then
-        -- TODO: support more than just youtube... this should also work out of the box for twitch vods?
-        local video_path = properties["path"] or ""
-        local video_referer = string.match(properties["http-header-fields"] or "", "Referer:([^,]+)") or ""
-        local urls = {
-            "^ytdl://([%w-_]+)",
-            "^https?://youtu%.be/([%w-_]+)",
-            "^https?://w?w?w?%.?youtube%.com/v/([%w-_]+)",
-            "/watch.*[?&]v=([%w-_]+)",
-            "/embed/([%w-_]+)"
-        }
-        local youtube_id = nil
-        for i, url in ipairs(urls) do
-            youtube_id = youtube_id or string.match(video_path, url) or string.match(video_referer, url)
-            if youtube_id then break end
-        end
-
-        if youtube_id and string.len(youtube_id) >= 11 then
-            youtube_id = string.sub(youtube_id, 1, 11)
-            -- TODO: find yt-dlp path
-            local sb_cmd = {"yt-dlp", "--format", "sb0", "--dump-json", "--no-playlist",
-                            "--extractor-args", "youtube:skip=hls,dash,translated_subs", -- yt speedup
-                            "--", "https://www.youtube.com/watch?v="..youtube_id}
-
-            subprocess(sb_cmd, true, function(success, sb_json)
-                if success and sb_json.status == 0 then
-                    local sb = mp.utils.parse_json(sb_json.stdout)
-                    if sb ~= nil and sb.duration and sb.width and sb.height and sb.fragments and #sb.fragments > 0 then
-                        local storyboard = {}
-                        local thumbnail_count = 0
-                        storyboard.fragments = sb.fragments
-                        storyboard.fragment_base_url = sb.fragment_base_url
-                        storyboard.rows = sb.rows or 5
-                        storyboard.cols = sb.columns or 5
-
-                        if sb.fps then
-                            thumbnail_count = math.floor(sb.fps * sb.duration + 0.5) -- round
-                            -- hack: youtube always adds 1 black frame at the end...
-                            if sb.extractor == "youtube" then
-                                thumbnail_count = thumbnail_count - 1
-                            end
-                        else
-                            -- estimate the count of thumbnails
-                            -- assume first atlas is always full
-                            thumbnail_delta = sb.fragments[1].duration / (storyboard.rows * storyboard.cols)
-                            thumbnail_count = math.floor(sb.duration / thumbnail_delta)
-                        end
-
-                        -- Storyboard upscaling factor
-                        local scale = properties["display-hidpi-scale"] or 1
-                        if sb.width / sb.height > options.max_width / options.max_height then
-                            real_w = math.floor(options.max_width * scale + 0.5)
-                            real_h = math.floor(sb.height / sb.width * real_w + 0.5)
-                        else
-                            real_h = math.floor(options.max_height * scale + 0.5)
-                            real_w = math.floor(sb.width / sb.height * real_h + 0.5)
-                        end
-                        local storyboard_scale = {w=real_w/sb.width, h=real_h/sb.height}
-                        local thumbnail_size = {w=real_w, h=real_h}
-                        info(real_w, real_h)
-
-                        storyboard.scale = scale
-
-                        thumbnail_delta = sb.duration / thumbnail_count
-
-                        fetch_fragment(storyboard, 1, thumbnail_size, 0, storyboard_scale)
-                    end
-                end
-            end)
-
-        end
-    end
 
     spawned = false
     if options.spawn_first then
@@ -1065,6 +1102,7 @@ end
 local function shutdown()
     run("quit")
     remove_thumbnail_files()
+    remove_storyboard_files()
     if os_name ~= "windows" then
         os.remove(options.socket)
         os.remove(options.socket..".run")
