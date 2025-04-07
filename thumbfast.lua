@@ -89,7 +89,7 @@ local max_processes = 5
 local function spawn_one(args, callback)
     if active_processes < max_processes then
         active_processes = active_processes + 1
-        subprocess(args, true, callback)
+        local abort = subprocess(args, true, callback)
         for i, process in ipairs(process_queue) do
             if process.args == args then
                 table.remove(process_queue, i)
@@ -98,7 +98,7 @@ local function spawn_one(args, callback)
         end
         for i, process in ipairs(all_processes) do
             if process.args == args then
-                all_processes[i] = nil
+                all_processes[i] = abort
                 break
             end
         end
@@ -124,15 +124,27 @@ end
 
 local function prioritize_process(atlas_index)
     local target_process = all_processes[atlas_index]
-    if not target_process then return end
+    if not target_process or not target_process.args then return end
 
     for i, process in ipairs(process_queue) do
         if process.args == target_process.args then
-            table.remove(process_queue, i)
-            table.insert(process_queue, 1, process)
+            if i ~= 1 then
+                table.remove(process_queue, i)
+                table.insert(process_queue, 1, process)
+            end
             break
         end
     end
+end
+
+local function cancel_queued_processes()
+    for i, process in ipairs(all_processes) do
+        if process and not process.args then
+            mp.abort_async_command(process)
+        end
+    end
+    all_processes = {}
+    process_queue = {}
 end
 
 local winapi = {}
@@ -195,8 +207,9 @@ local force_disabled = false
 local spawn_waiting = false
 local spawn_working = false
 local script_written = false
-local thumbnail_delta = 1
+local thumbnail_delta = nil
 local thumb_count_per_storyboard = 1
+local storyboard_thumbnails = {}
 
 local dirty = false
 
@@ -664,7 +677,7 @@ local function run(command)
 end
 
 local function draw(w, h, script)
-    if not w or not show_thumbnail then return end
+    if not w or not show_thumbnail or not thumbnail_path then return end
     if x ~= nil then
         local scale_w, scale_h = options.scale_factor ~= 1 and (w * options.scale_factor) or nil, options.scale_factor ~= 1 and (h * options.scale_factor) or nil
         if pre_0_30_0 then
@@ -753,6 +766,7 @@ local function check_new_thumb()
     -- validity but before actually moving the file, so move to a temporary
     -- location before validity check to make sure everything stays consistant
     -- and valid thumbnails don't get overwritten by invalid ones
+    if not thumbnail_path then return end
     local tmp = thumbnail_path..".tmp"
     move_file(thumbnail_path, tmp)
     local finfo = mp.utils.file_info(tmp)
@@ -832,15 +846,16 @@ local function thumb(time, r_x, r_y, script)
     end
 
     if thumbnail_delta then
-        -- TODO: do we need to do something special if the thumbnail doesn't exist?
         thumb_index = math.floor(time / thumbnail_delta)
         atlas_index = math.ceil(thumb_index / thumb_count_per_storyboard)
         prioritize_process(atlas_index)
-        thumbnail_path = options.thumbnail .. ".ytdl-thumbx" .. tostring(thumb_index)
+        if storyboard_thumbnails[thumb_index] then
+            thumbnail_path = storyboard_thumbnails[thumb_index]
+        end
     end
 
     script_name = script
-    if last_x ~= x or last_y ~= y or not show_thumbnail then
+    if last_x ~= x or last_y ~= y or not show_thumbnail or (thumbnail_delta and time ~= last_seek_time) then
         show_thumbnail = true
         last_x, last_y = x, y
         draw(real_w, real_h, script)
@@ -855,7 +870,8 @@ local function thumb(time, r_x, r_y, script)
 
     if time == last_seek_time then return end
     last_seek_time = time
-    if not spawned then spawn(time) end -- TODO: skip when ytdl on?
+    if thumbnail_delta then return end -- TODO: better check for when storyboards are in use
+    if not spawned then spawn(time) end
     request_seek()
     if not file_timer:is_enabled() then file_timer:resume() end
 end
@@ -967,10 +983,6 @@ local function sync_changes(prop, val)
     dirty = true
 end
 
-function output_name(idx, storyboard, atlas_idx)
-    local thumb_idx = (atlas_idx - 1) * storyboard.cols * storyboard.rows + idx
-    return options.thumbnail .. ".ytdl-thumbx" .. tostring(thumb_idx) .. ".bgra"
-end
 
 local function get_thumb(atlas_path, atlas_idx, storyboard, thumbnail_size, storyboard_scale)
     local atlas = io.open(atlas_path, "rb")
@@ -980,17 +992,23 @@ local function get_thumb(atlas_path, atlas_idx, storyboard, thumbnail_size, stor
     for pic = 0, atlas_pictures-1 do
         local x_start = (pic % storyboard.cols) * thumbnail_size.w
         local y_start = math.floor(pic / storyboard.cols) * thumbnail_size.h
-        local filename = output_name(pic, storyboard, atlas_idx)
-        if filename ~= nil then
-            local thumb_file = io.open(filename, "wb")
-            for line = 0, thumbnail_size.h - 1 do
-                atlas:seek("set", 4 * x_start + (y_start + line) * stride)
-                local data = atlas:read(thumbnail_size.w * 4)
-                if data ~= nil then
-                    thumb_file:write(data)
-                end
+        local thumb_idx = (atlas_idx - 1) * storyboard.cols * storyboard.rows + pic
+        local filename = options.thumbnail .. ".ytdl-thumbx" .. tostring(thumb_idx)
+        local thumb_file = io.open(filename .. ".bgra", "wb")
+        for line = 0, thumbnail_size.h - 1 do
+            atlas:seek("set", 4 * x_start + (y_start + line) * stride)
+            local data = atlas:read(thumbnail_size.w * 4)
+            if data ~= nil then
+                thumb_file:write(data)
             end
-            thumb_file:close()
+        end
+        thumb_file:close()
+        storyboard_thumbnails[thumb_idx] = filename
+        if last_seek_time then
+            local last_thumb_idx = math.floor(last_seek_time / thumbnail_delta)
+            if last_thumb_idx == thumb_idx then
+                last_seek_time = nil
+            end
         end
     end
     atlas:close()
@@ -1020,19 +1038,15 @@ local function fetch_fragment(storyboard, i, thumbnail_size, storyboard_scale)
     spawn_queued_process(args,
         function(success, result)
             if success == false or result.status ~= 0 then
-                mp.msg.error("thumbfast: storyboard download failed", i)
+                if not result.killed_by_us then
+                    mp.msg.error("thumbfast: storyboard download failed", "atlas:", i, "status:", result.status)
+                end
             else
                 get_thumb(options.thumbnail..".ytdl"..tostring(i), i, storyboard, thumbnail_size, storyboard_scale)
             end
         end
     )
 
-    -- TODO: set max n of active processes? I'm scared of spawning a lot of mpv processes when playing a 10 hour stream VOD... yeah this vid is 63 processes that's already too much https://www.youtube.com/watch?v=fKM2NYABFFc
-    -- I need some sort of a queue function.
-    -- create a list that will contain a representation of each subprocess call to be made
-    -- when a user hovers on the timeline, look up on a copy of the table which value corresponds to the requested index. stick that value at the start of the real table, and deduplicate it. this lets us prioritize fragments the user wants to see.
-    -- needs to be tested on a really long video, or with an artificially introduced delay, so we can check that the prioritization actually works. we also need to be sure that hovering on the timeline at all WORKS and lets us display thumbnails even though not all have been fetched yet.
-    -- when a fragment has been fetched, it sets itself to nil in the list copy, and is removed from the processing pile.
     fetch_fragment(storyboard, i+1, thumbnail_size, storyboard_scale)
 end
 
@@ -1085,6 +1099,7 @@ local function setup_storyboards()
                     storyboard.rows = sb.rows or 5
                     storyboard.cols = sb.columns or 5
                     thumb_count_per_storyboard = storyboard.rows * storyboard.cols
+                    thumbnail_path = nil
 
                     if sb.fps then
                         thumbnail_count = math.floor(sb.fps * sb.duration + 0.5) -- round
@@ -1139,7 +1154,9 @@ local function file_load()
         info_timer = nil
     end
 
-    if setup_storyboards() then return end
+    cancel_queued_processes()
+
+    if setup_storyboards() then return end -- TODO
 
     calc_dimensions()
     info(effective_w, effective_h)
