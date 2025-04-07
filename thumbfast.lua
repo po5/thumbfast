@@ -535,7 +535,7 @@ local function spawn(time)
     local vid = properties["vid"]
     has_vid = vid or 0
 
-    -- TODO: add filtered ytdl-raw-options, especially for 'cookies' option
+    -- TODO: add filtered ytdl-raw-options, especially for 'cookies' option, and maybe 'extractor-args' too
     -- TODO: use native property for cookies and cookies-file??
 
     local args = {
@@ -1153,6 +1153,7 @@ local function file_load()
         info_timer:kill()
         info_timer = nil
     end
+    thumbnail_delta = nil
 
     cancel_queued_processes()
 
