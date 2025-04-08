@@ -894,6 +894,11 @@ local function watch_changes()
     if not dirty or not properties["video-out-params"] then return end
     dirty = false
 
+    if using_storyboards then
+        -- TODO: handle rotation, flipping, cropping
+        return
+    end
+
     local old_w = effective_w
     local old_h = effective_h
 
