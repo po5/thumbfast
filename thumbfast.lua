@@ -212,6 +212,7 @@ local force_disabled = false
 local spawn_waiting = false
 local spawn_working = false
 local script_written = false
+local using_storyboards = false
 local thumbnail_delta = nil
 local thumb_count_per_storyboard = 1
 local storyboard_thumbnails = {}
@@ -857,7 +858,7 @@ local function thumb(time, r_x, r_y, script)
         x, y = math.floor(r_x + 0.5), math.floor(r_y + 0.5)
     end
 
-    if thumbnail_delta then
+    if using_storyboards and thumbnail_delta then
         thumb_index = math.floor(time / thumbnail_delta)
         atlas_index = math.ceil(thumb_index / thumb_count_per_storyboard)
         prioritize_process(atlas_index)
@@ -867,7 +868,7 @@ local function thumb(time, r_x, r_y, script)
     end
 
     script_name = script
-    if last_x ~= x or last_y ~= y or not show_thumbnail or (thumbnail_delta and time ~= last_seek_time) then
+    if last_x ~= x or last_y ~= y or not show_thumbnail or (using_storyboards and thumbnail_delta and time ~= last_seek_time) then
         show_thumbnail = true
         last_x, last_y = x, y
         draw(real_w, real_h, script)
@@ -882,7 +883,7 @@ local function thumb(time, r_x, r_y, script)
 
     if time == last_seek_time then return end
     last_seek_time = time
-    if thumbnail_delta then return end -- TODO: better check for when storyboards are in use
+    if using_storyboards then return end
     if not spawned then spawn(time) end
     request_seek()
     if not file_timer:is_enabled() then file_timer:resume() end
@@ -1237,6 +1238,8 @@ local function setup_storyboards()
         find_ytdl_path()
         if not ytdl_path then return end
 
+        using_storyboards = true
+
         local sb_cmd = {ytdl_path, "--format", "sb0", "--dump-json", "--no-playlist",
                         "--extractor-args", "youtube:skip=hls,dash,translated_subs", -- yt speedup
                         "--", path}
@@ -1307,6 +1310,7 @@ function file_load1()
         info_timer:kill()
         info_timer = nil
     end
+    using_storyboards = false
     thumbnail_delta = nil
     thumbnail_path = nil
 
