@@ -1135,7 +1135,7 @@ local ytdl_paths_to_search = {"yt-dlp", "yt-dlp_x86", "youtube-dl"}
 local ytdl_path = nil
 local function find_ytdl_path()
     if ytdl_path ~= nil then return ytdl_path end
-    ytdl_path = mp.get_property_native("user-data/mpv/ytdl/path")
+    ytdl_path = properties["user-data/mpv/ytdl/path"]
     if ytdl_path == "" then
         -- TODO: logging
         ytdl_path = false
@@ -1337,6 +1337,7 @@ mp.observe_property("http-header-fields", "string", update_property)
 mp.observe_property("cookies", "string", update_property)
 mp.observe_property("cookies-file", "string", update_property)
 mp.observe_property("stream-open-filename", "native", update_property)
+mp.observe_property("user-data/mpv/ytdl/path", "native", update_property)
 mp.observe_property("user-data/mpv/ytdl/json-subprocess-result", "native", update_property)
 mp.observe_property("macos-app-activation-policy", "native", update_property)
 mp.observe_property("current-vo", "native", update_property)
