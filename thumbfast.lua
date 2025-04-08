@@ -68,9 +68,9 @@ function subprocess(args, async, callback)
 
     if not pre_0_30_0 then
         if async then
-            return mp.command_native_async({name = "subprocess", playback_only = true, capture_stdout=true, args = args, env = "PATH="..os.getenv("PATH")}, callback)
+            return mp.command_native_async({name = "subprocess", playback_only = true, capture_stdout = true, capture_stderr = true, args = args, env = "PATH="..os.getenv("PATH")}, callback)
         else
-            return mp.command_native({name = "subprocess", playback_only = false, capture_stdout = true, args = args, env = "PATH="..os.getenv("PATH")})
+            return mp.command_native({name = "subprocess", playback_only = false, capture_stdout = true, capture_stderr = true, args = args, env = "PATH="..os.getenv("PATH")})
         end
     else
         if async then
@@ -147,8 +147,8 @@ local function cancel_queued_processes()
     all_processes = {}
     process_queue = {}
     if ytdl_subprocess_cancel ~= nil then
-        ytdl_subprocess_cancel = nil
         mp.abort_async_command(ytdl_subprocess_cancel)
+        ytdl_subprocess_cancel = nil
     end
 end
 
@@ -503,12 +503,20 @@ local function remove_thumbnail_files()
         file = nil
         file_bytes = 0
     end
-    os.remove(thumbnail_path)
-    os.remove(thumbnail_path..".bgra")
+    os.remove(options.thumbnail)
+    os.remove(options.thumbnail..".bgra")
 end
 
 local function remove_storyboard_files()
-    -- TODO
+    local atlas = 0
+    for thumb_index, thumb_filename in pairs(storyboard_thumbnails) do
+        atlas_index = math.ceil(thumb_index / thumb_count_per_storyboard)
+        if atlas_index > atlas then
+            atlas = atlas_index
+            os.remove(options.thumbnail..".ytdl"..tostring(atlas_index))
+        end
+        os.remove(thumb_filename..".bgra")
+    end
 end
 
 local activity_timer
@@ -1025,6 +1033,7 @@ local function fetch_fragment(storyboard, i, thumbnail_size, storyboard_scale)
     local args = {
         mpv_path, storyboard.fragments[i].url, "--no-config", "--msg-level=all=no", "--really-quiet", "--no-terminal", "--vo=null",
         "--frames=1",
+        --"--load-scripts=no", "--osc=no", "--ytdl=no", "--load-stats-overlay=no", "--load-osd-console=no", "--load-auto-profiles=no",
         "--no-sub", "--no-audio", "--hr-seek=no", "--sub-font-provider=none", "--embeddedfonts=no",
         "--no-ytdl", "--demuxer-readahead-secs=0", "--demuxer-max-bytes=128KiB",
         "--vd-lavc-software-fallback=1", "--vd-lavc-fast", "--vd-lavc-threads=2", --"--hwdec="..(options.hwdec and "auto" or "no"),
@@ -1277,14 +1286,17 @@ local function setup_storyboards()
                     return
                 end
             end
-            -- TODO: we need to fall back to regular thumbnailing if we reach this point
+
+            -- fall back to regular thumbnailing
+            file_load1()
+            file_load2()
         end)
         -- we are in a state where we decided yeah let's try storyboards
         return true
     end
 end
 
-local function file_load()
+function file_load1()
     clear()
     spawned = false
     real_w, real_h = nil, nil
@@ -1296,11 +1308,12 @@ local function file_load()
         info_timer = nil
     end
     thumbnail_delta = nil
+    thumbnail_path = nil
 
     cancel_queued_processes()
+end
 
-    if setup_storyboards() then return end -- TODO
-
+function file_load2()
     calc_dimensions()
     info(effective_w, effective_h)
     if disabled then return end
@@ -1310,6 +1323,14 @@ local function file_load()
         spawn(mp.get_property_number("time-pos", 0))
         first_file = true
     end
+end
+
+local function file_load()
+    file_load1()
+
+    if setup_storyboards() then return end
+
+    file_load2()
 end
 
 local function shutdown()
