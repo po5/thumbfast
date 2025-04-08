@@ -85,6 +85,7 @@ local all_processes = {}
 local process_queue = {}
 local active_processes = 0
 local max_processes = 5
+local ytdl_subprocess_cancel = nil
 
 local function spawn_one(args, callback)
     if active_processes < max_processes then
@@ -145,6 +146,10 @@ local function cancel_queued_processes()
     end
     all_processes = {}
     process_queue = {}
+    if ytdl_subprocess_cancel ~= nil then
+        ytdl_subprocess_cancel = nil
+        mp.abort_async_command(ytdl_subprocess_cancel)
+    end
 end
 
 local winapi = {}
@@ -593,7 +598,7 @@ local function spawn(time)
 
     subprocess(args, true,
         function(success, result)
-            if spawn_waiting and (success == false or (result.status ~= 0 and result.status ~= -2)) then
+            if spawn_waiting and (success == false or not result or (result.status ~= 0 and result.status ~= -2)) then
                 spawned = false
                 spawn_waiting = false
                 options.tone_mapping = "no"
@@ -625,7 +630,7 @@ local function spawn(time)
                         mp.commandv("script-message-to", "implay", "show-message", "thumbfast", "Set mpv_path=PATH_TO_ImPlay in thumbfast config:\n" .. string.gsub(mp.command_native({"expand-path", "~~/script-opts/thumbfast.conf"}), "[/\\]", path_separator).."\nand restart ImPlay")
                     end
                 end
-            elseif success == true and (result.status == 0 or result.status == -2) then
+            elseif success == true and result and (result.status == 0 or result.status == -2) then
                 if not spawn_working and properties["current-vo"] == "libmpv" and options.mpv_path ~= mpv_path then
                     mp.commandv("script-message-to", "implay", "show-message", "thumbfast initial setup", "Set mpv_path=ImPlay in thumbfast config:\n" .. string.gsub(mp.command_native({"expand-path", "~~/script-opts/thumbfast.conf"}), "[/\\]", path_separator).."\nand restart ImPlay")
                 end
@@ -1036,7 +1041,7 @@ local function fetch_fragment(storyboard, i, thumbnail_size, storyboard_scale)
 
     spawn_queued_process(args,
         function(success, result, err)
-            if success == false or result.status ~= 0 then
+            if success == false or (not result or result.status ~= 0) then
                 if not result.killed_by_us then
                     mp.msg.error("thumbfast: storyboard download failed", "atlas:", i, "status:", result.status)
                 end
@@ -1134,15 +1139,15 @@ end
 local ytdl_paths_to_search = {"yt-dlp", "yt-dlp_x86", "youtube-dl"}
 local ytdl_path = nil
 local function find_ytdl_path()
-    if ytdl_path ~= nil then return ytdl_path end
+    if ytdl_path ~= nil then return end
+
     ytdl_path = properties["user-data/mpv/ytdl/path"]
     if ytdl_path == "" then
         -- TODO: logging
         ytdl_path = false
     end
-    if ytdl_path ~= nil then
-        return ytdl_path
-    end
+
+    if ytdl_path ~= nil then return end
 
     -- logic from ytdl_hook.lua for mpv <v0.39.0
     local separator = os_name == "windows" and ";" or ":"
@@ -1168,12 +1173,15 @@ local function find_ytdl_path()
 end
 
 local function ytdl_subprocess(args, async, cb)
-    -- TODO: any processes spawned here should be killed on file change
     local callback = cb
     -- TODO: if available, check if properties["user-data/mpv/ytdl/json-subprocess-result"] has everything we need AND matches the current file. if yes, then call our callback prematurely.
     local function wrap_callback(callback)
         return function(success, result, err)
             callback(success, result, err)
+            if result and result.killed_by_us then
+                ytdl_path = ytdl_path - 1
+                return
+            end
             if err == "init" then
                 ytdl_subprocess(args, async, cb)
             elseif err ~= nil or not success then
@@ -1195,7 +1203,7 @@ local function ytdl_subprocess(args, async, cb)
         args[1] = ytdl_paths_to_search[ytdl_path]
         callback = wrap_callback(callback)
     end
-    return subprocess(args, async, callback)
+    ytdl_subprocess_cancel = subprocess(args, async, callback)
 end
 
 local function setup_storyboards()
