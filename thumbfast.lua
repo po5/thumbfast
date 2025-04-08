@@ -106,7 +106,7 @@ local function spawn_one(args, callback)
 end
 
 local function spawn_queued_process(args, callback)
-    local function wrap_callback(args, callback)
+    local function wrap_callback(callback)
         return function(...)
             callback(...)
             active_processes = active_processes - 1
@@ -115,7 +115,7 @@ local function spawn_queued_process(args, callback)
             end
         end
     end
-    local wrapped_callback = wrap_callback(args, callback)
+    local wrapped_callback = wrap_callback(callback)
     local process = {args=args, callback=wrapped_callback}
     table.insert(process_queue, process)
     table.insert(all_processes, process)
@@ -530,7 +530,6 @@ local function spawn(time)
     remove_thumbnail_files()
     remove_storyboard_files()
     thumbnail_path = options.thumbnail
-    -- are we spawning a real thumbnail process for yt vids? I hope not
 
     local vid = properties["vid"]
     has_vid = vid or 0
@@ -988,11 +987,11 @@ local function get_thumb(atlas_path, atlas_idx, storyboard, thumbnail_size, stor
     local atlas = io.open(atlas_path, "rb")
     local atlas_filesize = atlas:seek("end")
     local atlas_pictures = math.floor(atlas_filesize / (4 * thumbnail_size.w * thumbnail_size.h))
-    local stride = 4 * thumbnail_size.w * math.min(storyboard.cols, atlas_pictures)
+    local stride = 4 * thumbnail_size.w * math.min(storyboard.columns, atlas_pictures)
     for pic = 0, atlas_pictures-1 do
-        local x_start = (pic % storyboard.cols) * thumbnail_size.w
-        local y_start = math.floor(pic / storyboard.cols) * thumbnail_size.h
-        local thumb_idx = (atlas_idx - 1) * storyboard.cols * storyboard.rows + pic
+        local x_start = (pic % storyboard.columns) * thumbnail_size.w
+        local y_start = math.floor(pic / storyboard.columns) * thumbnail_size.h
+        local thumb_idx = (atlas_idx - 1) * storyboard.columns * storyboard.rows + pic
         local filename = options.thumbnail .. ".ytdl-thumbx" .. tostring(thumb_idx)
         local thumb_file = io.open(filename .. ".bgra", "wb")
         for line = 0, thumbnail_size.h - 1 do
@@ -1036,7 +1035,7 @@ local function fetch_fragment(storyboard, i, thumbnail_size, storyboard_scale)
     end
 
     spawn_queued_process(args,
-        function(success, result)
+        function(success, result, err)
             if success == false or result.status ~= 0 then
                 if not result.killed_by_us then
                     mp.msg.error("thumbfast: storyboard download failed", "atlas:", i, "status:", result.status)
@@ -1048,6 +1047,155 @@ local function fetch_fragment(storyboard, i, thumbnail_size, storyboard_scale)
     )
 
     fetch_fragment(storyboard, i+1, thumbnail_size, storyboard_scale)
+end
+
+local function anycase(s)
+    return string.gsub(s, "%a", function (c)
+        return string.format("[%s%s]", c:lower(), c:upper())
+    end)
+end
+
+local http_prefix = anycase("^https?://")
+local ytdl_prefix = "^ytdl://(.+)"
+local subdomains = "[%w-.]*"
+local naked_ytdl_id = "^ytdl://([%w-_]+)$"
+local youtube_id = "[%w-_]+.*"
+local twitch_id = "%d+.*"
+local ytdl_opts = {try_ytdl_first = false, ytdl_path = ""}
+mp.options.read_options(ytdl_opts, "ytdl_hook")
+
+local youtube_patterns_free = {
+    -- youtube.com/watch?v=abcdef01234 or any invidious/piped site
+    anycase(".*/watch.*[?&]v=")..youtube_id,
+
+    -- youtube.com/embed/abcdef01234 or any invidious/piped site
+    anycase(".*/embed/")..youtube_id,
+}
+local youtube_patterns = {
+    -- youtu.be/abcdef01234
+    "^"..anycase("youtu%.be/")..youtube_id,
+
+    -- youtube.com/v/abcdef01234
+    "^"..subdomains..anycase("youtube%.com/[^/]+/")..youtube_id,
+}
+local twitch_base = subdomains..anycase("twitch%.tv/")
+local twitch_patterns = {
+    -- twitch.tv/user/v/123456
+    "^"..subdomains..anycase("twitch%.tv/[^/]+/v/")..twitch_id,
+
+    -- twitch.tv/user/video/123456
+    "^"..subdomains..anycase("twitch%.tv/[^/]+/video/")..twitch_id,
+
+    -- twitch.tv/videos/123456
+    "^"..subdomains..anycase("twitch%.tv/videos/")..twitch_id,
+
+    -- twitch.tv/user/schedule?vodID=123456
+    "^"..subdomains..anycase("twitch%.tv/[^/]+/schedule%?vodID=")..twitch_id,
+
+    -- player.twitch.tv/?video=v123456 or player.twitch.tv/?video=123456
+    "^"..anycase("player%.twitch%.tv/.*[?&]video=v?")..twitch_id,
+}
+
+local function storyboard_supported_url(path, referer)
+    local video_url = string.match(path, naked_ytdl_id) or string.match(referer, naked_ytdl_id)
+    if video_url then
+        return video_url
+    end
+
+    path_ytdl, path_has_ytdl_prefix = string.gsub(path, ytdl_prefix, "%1")
+    path,      path_has_http_prefix = string.gsub(path_ytdl, http_prefix, "")
+    path_has_prefix = path_has_ytdl_prefix or path_has_http_prefix or ytdl_opts.try_ytdl_first
+
+    referer_ytdl, referer_has_ytdl_prefix = string.gsub(referer, ytdl_prefix, "%1")
+    referer,      referer_has_http_prefix = string.gsub(referer_ytdl, http_prefix, "")
+    referer_has_prefix = referer ~= "" and (referer_has_ytdl_prefix or referer_has_http_prefix or ytdl_opts.try_ytdl_first)
+
+    local checks = {
+        {input = path_ytdl,    patterns = youtube_patterns_free, condition = function(input) return true end},
+        {input = path,         patterns = youtube_patterns,      condition = function(input) return path_has_prefix end},
+        {input = path,         patterns = twitch_patterns,       condition = function(input) return path_has_prefix and string.match(input, twitch_base) end},
+        {input = referer_ytdl, patterns = youtube_patterns_free, condition = function(input) return input ~= "" end},
+        {input = referer,      patterns = youtube_patterns,      condition = function(input) return referer_has_prefix end},
+        {input = referer,      patterns = twitch_patterns,       condition = function(input) return referer_has_prefix and string.match(input, twitch_base) end},
+    }
+
+    for _, check in ipairs(checks) do
+        if check.condition(check.input) then
+            for _, pattern in ipairs(check.patterns) do
+                video_url = string.match(check.input, pattern)
+                if video_url then
+                    return video_url
+                end
+            end
+        end
+    end
+end
+
+local ytdl_paths_to_search = {"yt-dlp", "yt-dlp_x86", "youtube-dl"}
+local ytdl_path = nil
+local function find_ytdl_path()
+    if ytdl_path ~= nil then return ytdl_path end
+    ytdl_path = mp.get_property_native("user-data/mpv/ytdl/path")
+    if ytdl_path == "" then
+        -- TODO: logging
+        ytdl_path = false
+    end
+    if ytdl_path ~= nil then
+        return ytdl_path
+    end
+
+    -- logic from ytdl_hook.lua for mpv <v0.39.0
+    local separator = os_name == "windows" and ";" or ":"
+    if ytdl_opts.ytdl_path:match("[^" .. separator .. "]") then
+        ytdl_paths_to_search = {}
+        for path in ytdl_opts.ytdl_path:gmatch("[^" .. separator .. "]+") do
+            table.insert(ytdl_paths_to_search, path)
+        end
+    end
+
+    for _, path in pairs(ytdl_paths_to_search) do
+        -- search for youtube-dl in mpv's config dir
+        local exesuf = os_name == "windows" and not path:lower():match("%.exe$")
+                        and ".exe" or ""
+        ytdl_path = mp.find_config_file(path .. exesuf)
+        if ytdl_path then
+            msg.verbose("Found youtube-dl at: " .. ytdl_path)
+            return
+        end
+    end
+
+    ytdl_path = 0
+end
+
+local function ytdl_subprocess(args, async, cb)
+    -- TODO: any processes spawned here should be killed on file change
+    local callback = cb
+    -- TODO: if available, check if properties["user-data/mpv/ytdl/json-subprocess-result"] has everything we need AND matches the current file. if yes, then call our callback prematurely.
+    local function wrap_callback(callback)
+        return function(success, result, err)
+            callback(success, result, err)
+            if err == "init" then
+                ytdl_subprocess(args, async, cb)
+            elseif err ~= nil or not success then
+                -- TODO: logging
+                ytdl_path = false
+            else
+                -- we found ytdl
+                ytdl_path = args[1]
+            end
+        end
+    end
+    if type(ytdl_path) == "number" then
+        ytdl_path = ytdl_path + 1
+        if ytdl_path >= #ytdl_paths_to_search then
+            -- TODO: logging
+            ytdl_path = false
+            return
+        end
+        args[1] = ytdl_paths_to_search[ytdl_path]
+        callback = wrap_callback(callback)
+    end
+    return subprocess(args, async, callback)
 end
 
 local function setup_storyboards()
@@ -1063,46 +1211,31 @@ local function setup_storyboards()
     remove_thumbnail_files()
     remove_storyboard_files()
 
-    -- TODO: support more than just youtube... this should also work out of the box for twitch vods?
     local referer = string.match(properties["http-header-fields"] or "", "Referer:([^,]+)") or "" -- TODO: use native property here
-    -- TODO: youtube shorts pattern
     -- it may be possible to run the subprocess synchronously so that we can let yt-dlp decide if storyboards are supported at all??? I think this is the best option. I think I may have to call info() with 0 dimensions to make the thumbnail get disabled in the meantime tho.
-    -- something similar to check_new_thumb() may be needed for when we're writing the rgba files? most likely not though, since it's happening in the lua main loop so everything should be done writing already when we reach overlay-add
-    local urls = {
-        "^ytdl://([%w-_]+)",
-        "^https?://youtu%.be/([%w-_]+)",
-        "^https?://w?w?w?%.?youtube%.com/v/([%w-_]+)",
-        "/watch.*[?&]v=([%w-_]+)",
-        "/embed/([%w-_]+)"
-    }
-    local youtube_id = nil
-    for i, url in ipairs(urls) do
-        youtube_id = youtube_id or string.match(path, url) or string.match(referer, url)
-        if youtube_id then break end
-    end
 
-    if youtube_id and string.len(youtube_id) >= 11 then
-        youtube_id = string.sub(youtube_id, 1, 11)
-        -- TODO: find yt-dlp path
-        local sb_cmd = {"yt-dlp", "--format", "sb0", "--dump-json", "--no-playlist",
+    local video_url = storyboard_supported_url(path, referer)
+
+    if video_url then
+        find_ytdl_path()
+        if not ytdl_path then return end
+
+        local sb_cmd = {ytdl_path, "--format", "sb0", "--dump-json", "--no-playlist",
                         "--extractor-args", "youtube:skip=hls,dash,translated_subs", -- yt speedup
-                        "--", "https://www.youtube.com/watch?v="..youtube_id}
+                        "--", path}
 
-        subprocess(sb_cmd, true, function(success, sb_json)
+        ytdl_subprocess(sb_cmd, true, function(success, sb_json, err)
             if success and sb_json.status == 0 then
                 local sb = mp.utils.parse_json(sb_json.stdout)
                 if sb ~= nil and sb.duration and sb.width and sb.height and sb.fragments and #sb.fragments > 0 then
-                    local storyboard = {}
                     local thumbnail_count = 0
-                    storyboard.fragments = sb.fragments
-                    storyboard.fragment_base_url = sb.fragment_base_url
-                    storyboard.rows = sb.rows or 5
-                    storyboard.cols = sb.columns or 5
-                    thumb_count_per_storyboard = storyboard.rows * storyboard.cols
+                    sb.rows = sb.rows or 5
+                    sb.columns = sb.columns or 5
+                    thumb_count_per_storyboard = sb.rows * sb.columns
                     thumbnail_path = nil
 
                     if sb.fps then
-                        thumbnail_count = math.floor(sb.fps * sb.duration + 0.5) -- round
+                        thumbnail_count = math.floor(sb.fps * sb.duration + 0.5)
                         -- hack: youtube always adds 1 black frame at the end... --is this even true?
                         if sb.extractor == "youtube" then
                             thumbnail_count = thumbnail_count - 1
@@ -1110,13 +1243,11 @@ local function setup_storyboards()
                     else
                         -- estimate the count of thumbnails
                         -- assume first atlas is always full
-                        thumbnail_delta = sb.fragments[1].duration / (storyboard.rows * storyboard.cols)
+                        thumbnail_delta = sb.fragments[1].duration / (sb.rows * sb.columns)
                         thumbnail_count = math.floor(sb.duration / thumbnail_delta)
                     end
 
                     -- Storyboard upscaling factor
-                    -- TODO: shouldn't we set effective_w and effective_h here? that's what calc_dimensions does... look into it.
-                    -- we need to run info()
                     local scale = properties["display-hidpi-scale"] or 1
                     if sb.width / sb.height > options.max_width / options.max_height then
                         real_w = math.floor(options.max_width * scale + 0.5)
@@ -1127,17 +1258,20 @@ local function setup_storyboards()
                     end
                     local storyboard_scale = {w=real_w/sb.width, h=real_h/sb.height}
                     local thumbnail_size = {w=real_w, h=real_h}
+                    effective_w, effective_h = real_w, real_h
                     info(real_w, real_h)
 
-                    storyboard.scale = scale
+                    sb.scale = scale
 
                     thumbnail_delta = sb.duration / thumbnail_count
 
-                    fetch_fragment(storyboard, 1, thumbnail_size, storyboard_scale)
+                    fetch_fragment(sb, 1, thumbnail_size, storyboard_scale)
+                    return
                 end
             end
+            -- TODO: we need to fall back to regular thumbnailing if we reach this point
         end)
-        -- we are in a state where we decided yeah let's use the storyboards.
+        -- we are in a state where we decided yeah let's try storyboards
         return true
     end
 end
@@ -1203,6 +1337,7 @@ mp.observe_property("http-header-fields", "string", update_property)
 mp.observe_property("cookies", "string", update_property)
 mp.observe_property("cookies-file", "string", update_property)
 mp.observe_property("stream-open-filename", "native", update_property)
+mp.observe_property("user-data/mpv/ytdl/json-subprocess-result", "native", update_property)
 mp.observe_property("macos-app-activation-policy", "native", update_property)
 mp.observe_property("current-vo", "native", update_property)
 mp.observe_property("video-rotate", "native", update_property)
