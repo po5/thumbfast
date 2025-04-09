@@ -1054,7 +1054,7 @@ local function fetch_fragment(storyboard, i, thumbnail_size, storyboard_scale)
     if not storyboard.fragments[i] then return end
 
     local args = {
-        mpv_path, storyboard.fragments[i].url, "--no-config", "--msg-level=all=no", "--really-quiet", "--no-terminal", "--vo=null",
+        mpv_path, storyboard.fragments[i].url, "--no-config", "--msg-level=all=no", "--really-quiet", "--no-terminal",
         "--frames=1",
         --"--load-scripts=no", "--osc=no", "--ytdl=no", "--load-stats-overlay=no", "--load-osd-console=no", "--load-auto-profiles=no",
         "--no-sub", "--no-audio", "--hr-seek=no", "--sub-font-provider=none", "--embeddedfonts=no",
