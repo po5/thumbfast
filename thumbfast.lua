@@ -535,12 +535,6 @@ local function spawn(time)
         activity_timer:resume()
     end
 
-    local open_filename = properties["stream-open-filename"]
-    local forced_path = open_filename and path ~= open_filename
-    if forced_path then
-        path = open_filename
-    end
-
     remove_thumbnail_files()
     remove_storyboard_files()
     thumbnail_path = options.thumbnail
@@ -553,7 +547,7 @@ local function spawn(time)
 
     local args = {
         mpv_path, "--no-config", "--msg-level=all=no", "--idle", "--pause", "--keep-open=always", "--really-quiet", "--no-terminal",
-        "--load-scripts=no", "--osc=no", "--ytdl=no", "--load-stats-overlay=no", "--load-osd-console=no", "--load-auto-profiles=no",
+        "--load-scripts=no", "--osc=no", "--load-stats-overlay=no", "--load-osd-console=no", "--load-auto-profiles=no",
         "--edition="..(properties["edition"] or "auto"), "--vid="..(vid or "auto"), "--no-sub", "--no-audio",
         "--start="..time, allow_fast_seek and "--hr-seek=no" or "--hr-seek=yes",
         "--ytdl-format=worst", "--demuxer-readahead-secs=0", "--demuxer-max-bytes=128KiB",
