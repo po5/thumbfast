@@ -216,7 +216,6 @@ local using_storyboards = false
 local thumbnail_delta = nil
 local thumb_count_per_storyboard = 1
 local storyboard_thumbnails = {}
-local real_storyboard_w = nil
 
 local dirty = false
 
@@ -1005,35 +1004,17 @@ end
 local function get_thumb(atlas_path, atlas_idx, storyboard, thumbnail_size, storyboard_scale)
     local atlas = io.open(atlas_path, "rb")
     local atlas_filesize = atlas:seek("end")
-    local advertised_width = thumbnail_size.w
-    if real_storyboard_w == nil then
-        -- youtube sometimes reports an incorrectly rounded width, recalculate it from the height
-        local total_pixels = atlas_filesize / 4 / storyboard_scale.h
-        local num_thumbnails = storyboard.columns * storyboard.rows
-        local thumb_area = total_pixels / num_thumbnails
-        local thumb_og_width = math.floor(thumb_area / thumbnail_size.h + 0.5)
-        real_storyboard_w = math.floor(thumb_og_width * storyboard_scale.w + 0.5)
-        -- check accuracy of new value
-        local recalculated_height = math.floor(atlas_filesize / 4 / storyboard.columns / storyboard.rows / real_storyboard_w + 0.5)
-        if recalculated_height == thumbnail_size.h then
-            real_w = real_storyboard_w
-            effective_w = real_w
-            info(real_w, real_h)
-        else
-            real_storyboard_w = thumbnail_size.w
-        end
-    end
-    local atlas_pictures = math.floor(atlas_filesize / (4 * real_storyboard_w * thumbnail_size.h))
-    local stride = 4 * (real_storyboard_w * math.min(storyboard.columns, atlas_pictures) + real_storyboard_w - thumbnail_size.w)
+    local atlas_pictures = math.floor(atlas_filesize / (4 * thumbnail_size.w * thumbnail_size.h) + 0.5)
+    local stride = 4 * (thumbnail_size.w * math.min(storyboard.columns, atlas_pictures))
     for pic = 0, atlas_pictures-1 do
-        local x_start = (pic % storyboard.columns) * real_storyboard_w
+        local x_start = (pic % storyboard.columns) * thumbnail_size.w
         local y_start = math.floor(pic / storyboard.columns) * thumbnail_size.h
         local thumb_idx = (atlas_idx - 1) * storyboard.columns * storyboard.rows + pic
         local filename = options.thumbnail .. ".ytdl-thumbx" .. tostring(thumb_idx)
         local thumb_file = io.open(filename .. ".bgra", "wb")
         for line = 0, thumbnail_size.h - 1 do
             atlas:seek("set", 4 * x_start + (y_start + line) * stride)
-            local data = atlas:read(real_storyboard_w * 4)
+            local data = atlas:read(thumbnail_size.w * 4)
             if data ~= nil then
                 thumb_file:write(data)
             end
@@ -1063,7 +1044,7 @@ local function fetch_fragment(storyboard, i, thumbnail_size, storyboard_scale)
         --"--vf="..vf_string(filters_all, true),
         "--sws-allow-zimg=no", "--sws-fast=yes", "--sws-scaler=fast-bilinear",
         --"--video-rotate="..last_rotate,
-        "--vf-add=format=bgra,scale=round(iw*"..storyboard_scale.w.."):round(ih*"..storyboard_scale.h..")",
+        "--vf-add=format=bgra,scale=round(iw*"..storyboard_scale.w.."/"..thumbnail_size.w..")*"..thumbnail_size.w..":round(ih*"..storyboard_scale.h.."/"..thumbnail_size.h..")*"..thumbnail_size.h,
         "--ovc=rawvideo", "--of=rawvideo", "--ofopts=update=1", "--o="..options.thumbnail..".ytdl"..tostring(i)
     }
 
@@ -1292,14 +1273,16 @@ local function setup_storyboards()
                     -- Storyboard upscaling factor
                     local scale = properties["display-hidpi-scale"] or 1
                     if sb.width / sb.height > options.max_width / options.max_height then
-                        real_w = math.floor(options.max_width * scale + 0.5)
-                        real_h = math.floor(sb.height / sb.width * real_w + 0.5)
+                        real_w = options.max_width * scale
+                        real_h = math.floor(sb.height / sb.width * real_w)
+                        real_w = math.floor(real_w)
                     else
-                        real_h = math.floor(options.max_height * scale + 0.5)
-                        real_w = math.floor(sb.width / sb.height * real_h + 0.5)
+                        real_h = options.max_height * scale
+                        real_w = math.floor(sb.width / sb.height * real_h)
+                        real_h = math.floor(real_h)
                     end
                     local storyboard_scale = {w=real_w/sb.width, h=real_h/sb.height}
-                    local thumbnail_size = {w=real_w, h=real_h, ow=sb.width, oh=sb.width}
+                    local thumbnail_size = {w=real_w, h=real_h}
                     effective_w, effective_h = real_w, real_h
                     info(real_w, real_h)
 
@@ -1323,7 +1306,6 @@ function file_load1()
     clear()
     spawned = false
     real_w, real_h = nil, nil
-    real_storyboard_w = nil
     last_real_w, last_real_h = nil, nil
     last_tone_mapping = nil
     last_seek_time = nil
