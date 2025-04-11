@@ -1244,7 +1244,7 @@ local function setup_storyboards()
 
         local sb_cmd = {ytdl_path, "--format", "sb0", "--dump-json", "--no-playlist",
                         "--extractor-args", "youtube:skip=hls,dash,translated_subs", -- yt speedup
-                        "--", path}
+                        "--", video_url}
 
         ytdl_subprocess(sb_cmd, true, function(success, sb_json, err)
             if success and sb_json.status == 0 then
