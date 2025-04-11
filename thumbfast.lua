@@ -152,6 +152,24 @@ local function cancel_queued_processes()
     end
 end
 
+local function find_closest_index(tbl, target)
+    local lower = target - 1
+    local upper = target + 1
+
+    while lower >= 1 or upper <= #tbl do
+        if tbl[lower] ~= nil then
+            return lower
+        end
+        if tbl[upper] ~= nil then
+            return upper
+        end
+        lower = lower - 1
+        upper = upper + 1
+    end
+
+    return nil
+end
+
 local winapi = {}
 if options.direct_io then
     local ffi_loaded, ffi = pcall(require, "ffi")
@@ -858,6 +876,11 @@ local function thumb(time, r_x, r_y, script)
         prioritize_process(atlas_index)
         if storyboard_thumbnails[thumb_index] then
             thumbnail_path = storyboard_thumbnails[thumb_index]
+        else
+            local closest = find_closest_index(storyboard_thumbnails, thumb_index)
+            if closest then
+                thumbnail_path = storyboard_thumbnails[closest]
+            end
         end
     end
 
