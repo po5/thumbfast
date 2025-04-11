@@ -1209,6 +1209,12 @@ local function ytdl_subprocess(args, async, cb)
         end
         args[1] = ytdl_paths_to_search[ytdl_path]
         callback = wrap_callback(callback)
+    else
+        local ytdl_hook_subprocess = properties["user-data/mpv/ytdl/json-subprocess-result"]
+        if ytdl_hook_subprocess ~= nil then
+            callback(true, ytdl_hook_subprocess, nil)
+            return
+        end
     end
     ytdl_subprocess_cancel = subprocess(args, async, callback)
 end
@@ -1227,7 +1233,6 @@ local function setup_storyboards()
     remove_storyboard_files()
 
     local referer = string.match(properties["http-header-fields"] or "", "Referer:([^,]+)") or "" -- TODO: use native property here
-    -- it may be possible to run the subprocess synchronously so that we can let yt-dlp decide if storyboards are supported at all??? I think this is the best option. I think I may have to call info() with 0 dimensions to make the thumbnail get disabled in the meantime tho.
 
     local video_url = storyboard_supported_url(path, referer)
 
@@ -1243,8 +1248,10 @@ local function setup_storyboards()
 
         ytdl_subprocess(sb_cmd, true, function(success, sb_json, err)
             if success and sb_json.status == 0 then
-                local sb = mp.utils.parse_json(sb_json.stdout)
-                if sb ~= nil and sb.duration and sb.width and sb.height and sb.fragments and #sb.fragments > 0 then
+                local sb_j = mp.utils.parse_json(sb_json.stdout)
+                if sb_j and sb_j.formats then
+                for _, sb in ipairs(sb_j.formats) do
+                if sb and sb.format_id == "sb0" and sb_j.duration and sb.width and sb.height and sb.fragments and #sb.fragments > 0 then
                     local thumbnail_count = 0
                     sb.rows = sb.rows or 5
                     sb.columns = sb.columns or 5
@@ -1252,7 +1259,7 @@ local function setup_storyboards()
                     thumbnail_path = nil
 
                     if sb.fps then
-                        thumbnail_count = math.floor(sb.fps * sb.duration + 0.5)
+                        thumbnail_count = math.floor(sb.fps * sb_j.duration + 0.5)
                         -- hack: youtube always adds 1 black frame at the end... --is this even true?
                         if sb.extractor == "youtube" then
                             thumbnail_count = thumbnail_count - 1
@@ -1261,7 +1268,7 @@ local function setup_storyboards()
                         -- estimate the count of thumbnails
                         -- assume first atlas is always full
                         thumbnail_delta = sb.fragments[1].duration / (sb.rows * sb.columns)
-                        thumbnail_count = math.floor(sb.duration / thumbnail_delta)
+                        thumbnail_count = math.floor(sb_j.duration / thumbnail_delta)
                     end
 
                     -- Storyboard upscaling factor
@@ -1280,10 +1287,12 @@ local function setup_storyboards()
                     effective_w, effective_h = real_w, real_h
                     info(real_w, real_h)
 
-                    thumbnail_delta = sb.duration / thumbnail_count
+                    thumbnail_delta = sb_j.duration / thumbnail_count
 
                     fetch_fragment(sb, 1, thumbnail_size, storyboard_scale)
                     return
+                end
+                end
                 end
             end
 
