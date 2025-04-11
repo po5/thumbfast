@@ -1181,23 +1181,23 @@ end
 
 local function ytdl_subprocess(args, async, cb)
     local callback = cb
-    -- TODO: if available, check if properties["user-data/mpv/ytdl/json-subprocess-result"] has everything we need AND matches the current file. if yes, then call our callback prematurely.
     local function wrap_callback(callback)
         return function(success, result, err)
-            callback(success, result, err)
             if result and result.killed_by_us then
                 ytdl_path = ytdl_path - 1
                 return
             end
-            if err == "init" then
+            if err == "init" or (result and result.error_string == "init") then
                 ytdl_subprocess(args, async, cb)
-            elseif err ~= nil or not success then
+                return
+            elseif (err or "") ~= "" or not success then
                 -- TODO: logging
                 ytdl_path = false
             else
                 -- we found ytdl
                 ytdl_path = args[1]
             end
+            callback(success, result, err)
         end
     end
     if type(ytdl_path) == "number" then
@@ -1205,6 +1205,7 @@ local function ytdl_subprocess(args, async, cb)
         if ytdl_path >= #ytdl_paths_to_search then
             -- TODO: logging
             ytdl_path = false
+            callback(false, nil, nil)
             return
         end
         args[1] = ytdl_paths_to_search[ytdl_path]
