@@ -257,6 +257,9 @@ local filters_all = {["hflip"]=true, ["vflip"]=true, ["lavfi-crop"]=true, ["crop
 local tone_mappings = {["none"]=true, ["clip"]=true, ["linear"]=true, ["gamma"]=true, ["reinhard"]=true, ["hable"]=true, ["mobius"]=true}
 local last_tone_mapping
 
+local lavfi_crop = {}
+local storyboard_transpose = false
+
 local last_vf_reset = ""
 local last_vf_runtime = ""
 
@@ -412,18 +415,8 @@ local function vo_tone_mapping()
     end
 end
 
-local function vf_string(filters, full)
-    local vf = ""
+local function vf_string_simple(filters, vf)
     local vf_table = properties["vf"]
-
-    if (properties["video-crop"] or "") ~= "" then
-        vf = "lavfi-crop="..string.gsub(properties["video-crop"], "(%d*)x?(%d*)%+(%d+)%+(%d+)", "w=%1:h=%2:x=%3:y=%4")..","
-        local width = properties["video-out-params"] and properties["video-out-params"]["dw"]
-        local height = properties["video-out-params"] and properties["video-out-params"]["dh"]
-        if width and height then
-            vf = string.gsub(vf, "w=:h=:", "w="..width..":h="..height..":")
-        end
-    end
 
     if vf_table and #vf_table > 0 then
         for i = #vf_table, 1, -1 do
@@ -440,6 +433,24 @@ local function vf_string(filters, full)
         end
     end
 
+    return vf
+end
+
+local function vf_string(filters, full)
+    local vf = ""
+
+    if (properties["video-crop"] or "") ~= "" then
+        vf = "lavfi-crop="..string.gsub(properties["video-crop"], "(%d*)x?(%d*)%+(%d+)%+(%d+)", "w=%1:h=%2:x=%3:y=%4")..","
+        local width = properties["video-out-params"] and properties["video-out-params"]["dw"]
+        local height = properties["video-out-params"] and properties["video-out-params"]["dh"]
+        if width and height then
+            vf = string.gsub(vf, "w=:h=:", "w="..width..":h="..height..":")
+        end
+    end
+
+    vf = vf_string_simple(filters, vf)
+
+    -- TODO: don't apply to storyboards???
     if (full and options.tone_mapping ~= "no") or options.tone_mapping == "auto" then
         if properties["video-params"] and properties["video-params"]["primaries"] == "bt.2020" then
             local tone_mapping = options.tone_mapping
@@ -835,6 +846,7 @@ local function clear()
     show_thumbnail = false
     last_x = nil
     last_y = nil
+    thumbnail_path = nil
     if script_name then return end
     if pre_0_30_0 then
         mp.command_native({"overlay-remove", options.overlay_id})
@@ -906,12 +918,46 @@ local function thumb(time, r_x, r_y, script)
     if not file_timer:is_enabled() then file_timer:resume() end
 end
 
+local function parse_lavfi_crop(filters)
+    lavfi_crop = {}
+    local crop = string.match(filters, "lavfi%-crop=([^,]+)") -- TODO: do we also have to handle non-lavfi "crop"?
+    if crop then
+        for coord in crop:gmatch("[^:]+") do
+            local key, val = string.match(coord, "^([^=]+)=(.*)")
+            if key then
+                lavfi_crop[key] = tonumber(val)
+            end
+        end
+    end
+end
+
 local function watch_changes()
     if not dirty or not properties["video-out-params"] then return end
     dirty = false
 
+    local vf_reset = vf_string(filters_reset)
+    local rotate = properties["video-rotate"] or 0
+
+    local resized_storyboard = last_vf_reset ~= vf_reset or
+        last_rotate ~= rotate or
+        last_crop ~= properties["video-crop"]
+    -- TODO: add flipping detection
+
+    if resized_storyboard then
+        storyboard_transpose = rotate % 180 == 90
+        parse_lavfi_crop(vf_reset)
+        -- TODO: honor options.spawn_first, where we only start fetching thumbnails on hover?
+        clear() -- TODO: be smarter about this?
+        setup_storyboards()
+    end
+
     if using_storyboards then
-        -- TODO: handle rotation, flipping, cropping
+        if resized_storyboard then
+            -- TODO: respawn
+            last_vf_reset = vf_reset
+            last_rotate = rotate
+            last_crop = properties["video-crop"]
+        end
         return
     end
 
@@ -920,14 +966,12 @@ local function watch_changes()
 
     calc_dimensions()
 
-    local vf_reset = vf_string(filters_reset)
-    local rotate = properties["video-rotate"] or 0
-
     local resized = old_w ~= effective_w or
         old_h ~= effective_h or
         last_vf_reset ~= vf_reset or
         (last_rotate % 180) ~= (rotate % 180) or
-        par ~= last_par or last_crop ~= properties["video-crop"]
+        last_crop ~= properties["video-crop"] or
+        par ~= last_par
 
     if resized then
         last_rotate = rotate
@@ -1018,26 +1062,90 @@ local function sync_changes(prop, val)
     dirty = true
 end
 
-local function get_thumb(atlas_path, atlas_idx, storyboard, thumbnail_size, storyboard_scale)
+local function get_thumb(atlas_path, atlas_idx, storyboard, thumbnail_size, rotation, crop, hflip, vflip)
     local atlas = io.open(atlas_path, "rb")
+    if not atlas then
+        print("could not open atlas file", atlas_path)
+        return
+    end
+
     local atlas_filesize = atlas:seek("end")
-    local atlas_pictures = math.floor(atlas_filesize / (4 * thumbnail_size.w * thumbnail_size.h) + 0.5)
-    local stride = 4 * (thumbnail_size.w * math.min(storyboard.columns, atlas_pictures))
-    for pic = 0, atlas_pictures-1 do
-        local x_start = (pic % storyboard.columns) * thumbnail_size.w
-        local y_start = math.floor(pic / storyboard.columns) * thumbnail_size.h
-        local thumb_idx = (atlas_idx - 1) * storyboard.columns * storyboard.rows + pic
+    local total_thumb_pixels = 4 * thumbnail_size.w * thumbnail_size.h
+    local num_thumbs = math.floor(atlas_filesize / total_thumb_pixels + 0.5)
+    local num_per_atlas = storyboard.columns * storyboard.rows
+
+    local logical_columns = math.min(storyboard.columns, num_thumbs)
+    local logical_rows = math.ceil(num_thumbs / logical_columns)
+
+    local t_width, t_height, physical_atlas_width, physical_atlas_height
+
+    if rotation == 0 or rotation == 180 then
+        t_width = thumbnail_size.w
+        t_height = thumbnail_size.h
+        physical_atlas_width = logical_columns * t_width
+        physical_atlas_height = logical_rows * t_height
+    elseif rotation == 90 or rotation == 270 then
+        t_width = thumbnail_size.h
+        t_height = thumbnail_size.w
+        physical_atlas_width = logical_rows * t_width
+        physical_atlas_height = logical_columns * t_height
+    end
+
+    local stride = 4 * physical_atlas_width
+
+    -- TODO: handle cropping
+
+    for pic = 0, num_thumbs - 1 do
+        local logical_col = pic % logical_columns
+        local logical_row = math.floor(pic / logical_columns)
+
+        local x_start, y_start
+
+        if rotation == 0 then
+            x_start = logical_col * t_width
+            y_start = logical_row * t_height
+        elseif rotation == 180 then
+            x_start = physical_atlas_width - (logical_col + 1) * t_width
+            y_start = physical_atlas_height - (logical_row + 1) * t_height
+        elseif rotation == 90 then
+            local phys_col = logical_rows - 1 - logical_row
+            local phys_row = logical_col
+            x_start = phys_col * t_width
+            y_start = phys_row * t_height
+        elseif rotation == 270 then
+            local phys_col = logical_row
+            local phys_row = logical_columns - 1 - logical_col
+            x_start = phys_col * t_width
+            y_start = phys_row * t_height
+        end
+
+        if hflip then
+            x_start = (physical_atlas_width - t_width) - x_start
+        end
+        if vflip then
+            y_start = (physical_atlas_height - t_height) - y_start
+        end
+
+        local thumb_idx = (atlas_idx - 1) * num_per_atlas + pic
         local filename = options.thumbnail .. ".ytdl-thumbx" .. tostring(thumb_idx)
         local thumb_file = io.open(filename .. ".bgra", "wb")
-        for line = 0, thumbnail_size.h - 1 do
+        if not thumb_file then
+            atlas:close()
+            print("storyboard thumbnail write failed", filename)
+            return
+        end
+
+        for line = 0, t_height - 1 do
             atlas:seek("set", 4 * x_start + (y_start + line) * stride)
-            local data = atlas:read(thumbnail_size.w * 4)
-            if data ~= nil then
+            local data = atlas:read(t_width * 4)
+            if data then
                 thumb_file:write(data)
             end
         end
+
         thumb_file:close()
         storyboard_thumbnails[thumb_idx] = filename
+
         if last_seek_time then
             local last_thumb_idx = math.floor(last_seek_time / thumbnail_delta)
             if last_thumb_idx == thumb_idx then
@@ -1045,10 +1153,11 @@ local function get_thumb(atlas_path, atlas_idx, storyboard, thumbnail_size, stor
             end
         end
     end
+
     atlas:close()
 end
 
-local function fetch_fragment(storyboard, i, thumbnail_size, storyboard_scale)
+local function fetch_fragment(storyboard, i, thumbnail_size, storyboard_scale, scale_formula, video_filters, crop, hflip, vflip)
     if not storyboard.fragments[i] then return end
 
     local args = {
@@ -1058,10 +1167,10 @@ local function fetch_fragment(storyboard, i, thumbnail_size, storyboard_scale)
         "--no-sub", "--no-audio", "--hr-seek=no", "--sub-font-provider=none", "--embeddedfonts=no",
         "--no-ytdl", "--demuxer-readahead-secs=0", "--demuxer-max-bytes=128KiB",
         "--vd-lavc-software-fallback=1", "--vd-lavc-fast", "--vd-lavc-threads=2", --"--hwdec="..(options.hwdec and "auto" or "no"),
-        --"--vf="..vf_string(filters_all, true),
+        "--vf="..video_filters,
         "--sws-allow-zimg=no", "--sws-fast=yes", "--sws-scaler=fast-bilinear",
         --"--video-rotate="..last_rotate,
-        "--vf-add=format=bgra,scale=round(iw*"..storyboard_scale.w.."/"..thumbnail_size.w..")*"..thumbnail_size.w..":round(ih*"..storyboard_scale.h.."/"..thumbnail_size.h..")*"..thumbnail_size.h,
+        "--vf-add=format=bgra,scale="..scale_formula,
         "--ovc=rawvideo", "--of=rawvideo", "--ofopts=update=1", "--o="..options.thumbnail..".ytdl"..tostring(i)
     }
 
@@ -1076,12 +1185,12 @@ local function fetch_fragment(storyboard, i, thumbnail_size, storyboard_scale)
                     mp.msg.error("thumbfast: storyboard download failed", "atlas:", i, "status:", result.status)
                 end
             else
-                get_thumb(options.thumbnail..".ytdl"..tostring(i), i, storyboard, thumbnail_size, storyboard_scale)
+                get_thumb(options.thumbnail..".ytdl"..tostring(i), i, storyboard, thumbnail_size, math.floor((properties["video-rotate"] or 0) / 90 + 0.5) * 90, crop, hflip, vflip)
             end
         end
     )
 
-    fetch_fragment(storyboard, i+1, thumbnail_size, storyboard_scale)
+    fetch_fragment(storyboard, i+1, thumbnail_size, storyboard_scale, scale_formula, video_filters, crop, hflip, vflip)
 end
 
 local function anycase(s)
@@ -1243,7 +1352,7 @@ local function ytdl_subprocess(args, async, cb)
     ytdl_subprocess_cancel = subprocess(args, async, callback)
 end
 
-local function setup_storyboards()
+function setup_storyboards()
     if not options.network then return end
 
     local path = properties["path"]
@@ -1275,19 +1384,13 @@ local function setup_storyboards()
                 local sb_j = mp.utils.parse_json(sb_json.stdout)
                 if sb_j and sb_j.formats then
                 for _, sb in ipairs(sb_j.formats) do
-                if sb and sb.format_id == "sb0" and sb_j.duration and sb.width and sb.height and sb.fragments and #sb.fragments > 0 then
+                if sb and sb.format_id == "sb0" and sb_j.duration and sb.width and sb.height and sb.rows and sb.columns and sb.fragments and #sb.fragments > 0 then
                     local thumbnail_count = 0
-                    sb.rows = sb.rows or 5
-                    sb.columns = sb.columns or 5
                     thumb_count_per_storyboard = sb.rows * sb.columns
                     thumbnail_path = nil
 
                     if sb.fps then
                         thumbnail_count = math.floor(sb.fps * sb_j.duration + 0.5)
-                        -- hack: youtube always adds 1 black frame at the end... --is this even true?
-                        if sb.extractor == "youtube" then
-                            thumbnail_count = thumbnail_count - 1
-                        end
                     else
                         -- estimate the count of thumbnails
                         -- assume first atlas is always full
@@ -1307,13 +1410,52 @@ local function setup_storyboards()
                         real_h = math.floor(real_h)
                     end
                     local storyboard_scale = {w=real_w/sb.width, h=real_h/sb.height}
-                    local thumbnail_size = {w=real_w, h=real_h}
+                    local thumbnail_size = {w=real_w, h=real_h, ow=sb.width, oh=sb.height, cw=real_w, ch=real_h}
                     effective_w, effective_h = real_w, real_h
+                    if storyboard_transpose then
+                        real_w, real_h = real_h, real_w
+                    end
+                    local crop = {x=0, y=0, w=0, h=0}
+                    local vf_reset = vf_string(filters_reset)
+                    parse_lavfi_crop(vf_reset)
+                    if lavfi_crop.x and lavfi_crop.y and lavfi_crop.w and lavfi_crop.h then
+                        local width, height = properties["width"], properties["height"]
+                        if width and height then
+                            -- TODO: crop handling is unfinished
+                            local cropped_from_width = width - lavfi_crop.w
+                            local cropped_from_height = height - lavfi_crop.h
+                            thumbnail_size.cw = math.floor(thumbnail_size.w * (width / lavfi_crop.w) + 0.5)
+                            thumbnail_size.ch = math.floor(thumbnail_size.h * (height / lavfi_crop.h) + 0.5)
+                            local scale_x = thumbnail_size.cw / thumbnail_size.w
+                            local scale_y = thumbnail_size.ch / thumbnail_size.h
+                            crop.x = math.floor(lavfi_crop.x / scale_x + 0.5) -- TODO: math.min(crop.x + thumbnail_size.w, thumbnail_size.cw) - thumbnail_size.w
+                            crop.y = math.floor(lavfi_crop.y / scale_y + 0.5) -- TODO: math.min(crop.y + thumbnail_size.h, thumbnail_size.ch) - thumbnail_size.h
+                            crop.w = math.floor(lavfi_crop.w / scale_x + 0.5) -- TODO: thumbnail_size.w
+                            crop.h = math.floor(lavfi_crop.h / scale_y + 0.5) -- TODO: thumbnail_size.h
+                            real_w = crop.w -- unnecessary
+                            real_h = crop.h -- unnecessary
+                            storyboard_scale = {w=thumbnail_size.cw/thumbnail_size.ow, h=thumbnail_size.ch/thumbnail_size.oh}
+                        end
+                    end
                     info(real_w, real_h)
+
+                    local transpose = string.rep("transpose=1,", math.floor(properties["video-rotate"] or 0) / 90 % 4)
+                    local vf = vf_string_simple(filters_runtime, "")
+                    local video_filters = (vf .. transpose):sub(1, -2)
+                    local width_formula = "round(iw*"..storyboard_scale.w.."/"..thumbnail_size.cw..")*"..thumbnail_size.cw
+                    local height_formula = "round(ih*"..storyboard_scale.h.."/"..thumbnail_size.ch..")*"..thumbnail_size.ch
+                    if storyboard_transpose then
+                        width_formula = "round(iw*"..storyboard_scale.w.."/"..thumbnail_size.ch..")*"..thumbnail_size.ch
+                        height_formula = "round(ih*"..storyboard_scale.h.."/"..thumbnail_size.cw..")*"..thumbnail_size.cw
+                    end
+                    local scale_formula = width_formula..":"..height_formula
+
+                    -- TODO: account for when hflip or vflip get cancelled out by multiple invocations... and use the actual vf table instead of working on strings
+                    local hflip, vflip = string.match(vf, "hflip"), string.match(vf, "vflip")
 
                     thumbnail_delta = sb_j.duration / thumbnail_count
 
-                    fetch_fragment(sb, 1, thumbnail_size, storyboard_scale)
+                    fetch_fragment(sb, 1, thumbnail_size, storyboard_scale, scale_formula, video_filters, lavfi_crop, hflip, vflip)
                     return
                 end
                 end
@@ -1321,15 +1463,14 @@ local function setup_storyboards()
             end
 
             -- fall back to regular thumbnailing
-            file_load1()
-            file_load2()
+            file_load()
         end)
         -- we are in a state where we decided yeah let's try storyboards
         return true
     end
 end
 
-function file_load1()
+local function file_load()
     clear()
     spawned = false
     real_w, real_h = nil, nil
@@ -1345,26 +1486,16 @@ function file_load1()
     thumbnail_path = nil
 
     cancel_queued_processes()
-end
 
-function file_load2()
     calc_dimensions()
     info(effective_w, effective_h)
     if disabled then return end
 
     spawned = false
-    if options.spawn_first then
+    if options.spawn_first then -- TODO: skip if matches storyboard stuff
         spawn(mp.get_property_number("time-pos", 0))
         first_file = true
     end
-end
-
-local function file_load()
-    file_load1()
-
-    if setup_storyboards() then return end
-
-    file_load2()
 end
 
 local function shutdown()
@@ -1407,6 +1538,8 @@ mp.observe_property("current-vo", "native", update_property)
 mp.observe_property("video-rotate", "native", update_property)
 mp.observe_property("video-crop", "native", update_property)
 mp.observe_property("path", "native", update_property)
+mp.observe_property("width", "native", update_property)
+mp.observe_property("height", "native", update_property)
 mp.observe_property("vid", "native", sync_changes)
 mp.observe_property("edition", "native", sync_changes)
 mp.observe_property("duration", "native", on_duration)
