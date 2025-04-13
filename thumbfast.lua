@@ -152,22 +152,21 @@ local function cancel_queued_processes()
     end
 end
 
-local function find_closest_index(tbl, target)
-    local lower = target - 1
-    local upper = target + 1
-
-    while lower >= 1 or upper <= #tbl do
-        if tbl[lower] ~= nil then
-            return lower
-        end
-        if tbl[upper] ~= nil then
-            return upper
-        end
-        lower = lower - 1
-        upper = upper + 1
+local function closest_thumbnail(tbl, target)
+    if tbl[target] then
+        return tbl[target]
     end
 
-    return nil
+    local offset = 1
+    while target - offset >= 1 or target + offset <= #tbl do
+        if tbl[target - offset] then
+            return tbl[target - offset]
+        end
+        if tbl[target + offset] then
+            return tbl[target + offset]
+        end
+        offset = offset + 1
+    end
 end
 
 local winapi = {}
@@ -883,16 +882,13 @@ local function thumb(time, r_x, r_y, script)
     end
 
     if using_storyboards and thumbnail_delta then
-        thumb_index = math.floor(time / thumbnail_delta)
-        atlas_index = math.ceil(thumb_index / thumb_count_per_storyboard)
-        prioritize_process(atlas_index)
-        if storyboard_thumbnails[thumb_index] then
-            thumbnail_path = storyboard_thumbnails[thumb_index]
+        local thumb_index = math.floor(time / thumbnail_delta)
+        local closest = closest_thumbnail(storyboard_thumbnails, thumb_index)
+        if closest ~= nil then
+            thumbnail_path = closest
         else
-            local closest = find_closest_index(storyboard_thumbnails, thumb_index)
-            if closest then
-                thumbnail_path = storyboard_thumbnails[closest]
-            end
+            local atlas_index = math.ceil(thumb_index / thumb_count_per_storyboard)
+            prioritize_process(atlas_index)
         end
     end
 
@@ -1203,7 +1199,7 @@ local http_prefix = anycase("^https?://")
 local ytdl_prefix = "^ytdl://(.+)"
 local subdomains = "[%w-.]*"
 local naked_ytdl_id = "^ytdl://([%w-_]+)$"
-local youtube_id = "[%w-_]+.*"
+local youtube_id = ".+"
 local twitch_id = "%d+.*"
 local ytdl_opts = {try_ytdl_first = false, ytdl_path = ""}
 mp.options.read_options(ytdl_opts, "ytdl_hook")
@@ -1219,7 +1215,7 @@ local youtube_patterns = {
     -- youtu.be/abcdef01234
     "^"..anycase("youtu%.be/")..youtube_id,
 
-    -- youtube.com/v/abcdef01234
+    -- youtube.com/v/abcdef01234 or youtube.com/shorts/abcdef01234
     "^"..subdomains..anycase("youtube%.com/[^/]+/")..youtube_id,
 }
 local twitch_base = subdomains..anycase("twitch%.tv/")
