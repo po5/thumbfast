@@ -106,7 +106,7 @@ local function spawn_one(args, callback)
     end
 end
 
-local function spawn_queued_process(args, callback)
+local function spawn_queued_process(index, args, callback)
     local function wrap_callback(callback)
         return function(...)
             callback(...)
@@ -119,7 +119,7 @@ local function spawn_queued_process(args, callback)
     local wrapped_callback = wrap_callback(callback)
     local process = {args=args, callback=wrapped_callback}
     table.insert(process_queue, process)
-    table.insert(all_processes, process)
+    all_processes[index] = process
     spawn_one(args, wrapped_callback)
 end
 
@@ -152,7 +152,7 @@ local function cancel_queued_processes()
     end
 end
 
-local function closest_preceeding_thumbnail(tbl, target)
+local function closest_thumbnail(tbl, target)
     for offset = 0, target - 1 do
         if tbl[target - offset] then
             return tbl[target - offset]
@@ -874,7 +874,7 @@ local function thumb(time, r_x, r_y, script)
 
     if using_storyboards and thumbnail_delta then
         local thumb_index = math.floor(time / thumbnail_delta)
-        local closest = closest_preceeding_thumbnail(storyboard_thumbnails, thumb_index)
+        local closest = closest_thumbnail(storyboard_thumbnails, thumb_index)
         if closest ~= nil then
             thumbnail_path = closest
         end
@@ -1144,15 +1144,13 @@ local function get_thumb(atlas_path, atlas_idx, storyboard, thumbnail_size, rota
 end
 
 local function fetch_fragment(storyboard, i, thumbnail_size, storyboard_scale, scale_formula, video_filters, crop, hflip, vflip)
-    if not storyboard.fragments[i] then return end
-
     local args = {
         mpv_path, storyboard.fragments[i].url, "--no-config", "--msg-level=all=no", "--really-quiet", "--no-terminal",
         "--frames=1",
         --"--load-scripts=no", "--osc=no", "--ytdl=no", "--load-stats-overlay=no", "--load-osd-console=no", "--load-auto-profiles=no",
         "--no-sub", "--no-audio", "--hr-seek=no", "--sub-font-provider=none", "--embeddedfonts=no",
         "--no-ytdl", "--demuxer-readahead-secs=0", "--demuxer-max-bytes=128KiB",
-        "--vd-lavc-software-fallback=1", "--vd-lavc-fast", "--vd-lavc-threads=2", --"--hwdec="..(options.hwdec and "auto" or "no"),
+        "--ao=null", "--ao-null-untimed", "--vd-lavc-software-fallback=1", "--vd-lavc-fast", "--vd-lavc-threads=2", --"--hwdec="..(options.hwdec and "auto" or "no"),
         "--vf="..video_filters,
         "--sws-allow-zimg=no", "--sws-fast=yes", "--sws-scaler=fast-bilinear",
         --"--video-rotate="..last_rotate,
@@ -1164,7 +1162,7 @@ local function fetch_fragment(storyboard, i, thumbnail_size, storyboard_scale, s
         table.insert(args, "--macos-app-activation-policy=prohibited")
     end
 
-    spawn_queued_process(args,
+    spawn_queued_process(i, args,
         function(success, result, err)
             if success == false or (not result or result.status ~= 0) then
                 if not result.killed_by_us then
@@ -1175,8 +1173,48 @@ local function fetch_fragment(storyboard, i, thumbnail_size, storyboard_scale, s
             end
         end
     )
+end
 
-    fetch_fragment(storyboard, i+1, thumbnail_size, storyboard_scale, scale_formula, video_filters, crop, hflip, vflip)
+local function fetch_reordered_fragments(storyboard, ...)
+    local n = #storyboard.fragments
+    local order = {}
+    local intervals = {}
+
+    local function interval_cmp(a, b)
+        local gapA = a.high - a.low
+        local gapB = b.high - b.low
+        if gapA == gapB then
+            return a.low < b.low
+        end
+        return gapA > gapB
+    end
+
+    if n >= 1 then
+        table.insert(order, 1)
+    end
+    if n >= 2 then
+        table.insert(order, n)
+        table.insert(intervals, {low = 1, high = n})
+    end
+
+    while #intervals > 0 do
+        table.sort(intervals, interval_cmp)
+        local current = table.remove(intervals, 1)
+        if current.high - current.low > 1 then
+            local mid = math.floor((current.low + current.high) / 2)
+            table.insert(order, mid)
+            if mid - current.low > 1 then
+                table.insert(intervals, {low = current.low, high = mid})
+            end
+            if current.high - mid > 1 then
+                table.insert(intervals, {low = mid, high = current.high})
+            end
+        end
+    end
+
+    for _, index in ipairs(order) do
+        fetch_fragment(storyboard, index, ...)
+    end
 end
 
 local function anycase(s)
@@ -1441,7 +1479,7 @@ function setup_storyboards()
 
                     thumbnail_delta = sb_j.duration / thumbnail_count
 
-                    fetch_fragment(sb, 1, thumbnail_size, storyboard_scale, scale_formula, video_filters, lavfi_crop, hflip, vflip)
+                    fetch_reordered_fragments(sb, thumbnail_size, storyboard_scale, scale_formula, video_filters, lavfi_crop, hflip, vflip)
                     return
                 end
                 end
