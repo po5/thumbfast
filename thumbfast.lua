@@ -152,20 +152,11 @@ local function cancel_queued_processes()
     end
 end
 
-local function closest_thumbnail(tbl, target)
-    if tbl[target] then
-        return tbl[target]
-    end
-
-    local offset = 1
-    while target - offset >= 1 or target + offset <= #tbl do
+local function closest_preceeding_thumbnail(tbl, target)
+    for offset = 0, target - 1 do
         if tbl[target - offset] then
             return tbl[target - offset]
         end
-        if tbl[target + offset] then
-            return tbl[target + offset]
-        end
-        offset = offset + 1
     end
 end
 
@@ -883,13 +874,12 @@ local function thumb(time, r_x, r_y, script)
 
     if using_storyboards and thumbnail_delta then
         local thumb_index = math.floor(time / thumbnail_delta)
-        local closest = closest_thumbnail(storyboard_thumbnails, thumb_index)
+        local closest = closest_preceeding_thumbnail(storyboard_thumbnails, thumb_index)
         if closest ~= nil then
             thumbnail_path = closest
-        else
-            local atlas_index = math.ceil(thumb_index / thumb_count_per_storyboard)
-            prioritize_process(atlas_index)
         end
+        local atlas_index = math.ceil(thumb_index / thumb_count_per_storyboard)
+        prioritize_process(atlas_index)
     end
 
     script_name = script
