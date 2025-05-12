@@ -35,6 +35,9 @@ local options = {
     -- Spawn thumbnailer on file load for faster initial thumbnails
     spawn_first = false,
 
+    -- Close thumbnailer process after current playback stoped, except spawn_first is enabled
+    quit_after_playback = false,
+
     -- Close thumbnailer process after an inactivity period in seconds, 0 to disable
     quit_after_inactivity = 0,
 
@@ -58,6 +61,10 @@ mp.utils = require "mp.utils"
 mp.options = require "mp.options"
 mp.options.read_options(options, "thumbfast")
 
+if options.spawn_first then
+    options.quit_after_playback = false
+end
+
 local properties = {}
 local pre_0_30_0 = mp.command_native_async == nil
 local pre_0_33_0 = true
@@ -68,7 +75,7 @@ function subprocess(args, async, callback)
 
     if not pre_0_30_0 then
         if async then
-            return mp.command_native_async({name = "subprocess", playback_only = true, args = args, env = "PATH="..os.getenv("PATH")}, callback)
+            return mp.command_native_async({name = "subprocess", playback_only = options.quit_after_playback, args = args, env = "PATH="..os.getenv("PATH")}, callback)
         else
             return mp.command_native({name = "subprocess", playback_only = false, capture_stdout = true, args = args, env = "PATH="..os.getenv("PATH")})
         end
@@ -889,8 +896,11 @@ local function sync_changes(prop, val)
 end
 
 local function file_load()
+    if spawned and options.quit_after_playback then
+        if pre_0_30_0 then run("quit") end
+        spawned = false
+    end
     clear()
-    spawned = false
     real_w, real_h = nil, nil
     last_real_w, last_real_h = nil, nil
     last_tone_mapping = nil
