@@ -22,6 +22,10 @@ local options = {
     max_height = 200,
     max_width = 200,
 
+    -- Optional thumbnail scale relative to the current window size.
+    -- Set to 0 to fall back to max_width/max_height behaviour.
+    scale = 0.2,
+
     -- Scale factor for thumbnail display size (requires mpv 0.38+)
     -- Note that this is lower quality than increasing max_height and max_width
     scale_factor = 1,
@@ -30,7 +34,7 @@ local options = {
     tone_mapping = "auto",
 
     -- Overlay id
-    overlay_id = 42,
+    overlay_id = 46,
 
     -- Spawn thumbnailer on file load for faster initial thumbnails
     spawn_first = false,
@@ -54,16 +58,16 @@ local options = {
     mpv_path = "mpv"
 }
 
-mp.utils = require "mp.utils"
-mp.options = require "mp.options"
-mp.options.read_options(options, "thumbfast")
+mp.utils = require("mp.utils")
+mp.options = require("mp.options")
+mp.options.read_options(options)
 
 local properties = {}
 local pre_0_30_0 = mp.command_native_async == nil
 local pre_0_33_0 = true
 local support_media_control = mp.get_property_native("media-controls") ~= nil
 
-function subprocess(args, async, callback)
+local function subprocess(args, async, callback)
     callback = callback or function() end
 
     if not pre_0_30_0 then
@@ -374,14 +378,25 @@ local function calc_dimensions()
     local height = properties["video-out-params"] and properties["video-out-params"]["dh"]
     if not width or not height then return end
 
-    local scale = properties["display-hidpi-scale"] or 1
+    local dpi_scale = properties["display-hidpi-scale"] or 1
+    local window_scale = properties["current-window-scale"]
+    if type(window_scale) ~= "number" or window_scale <= 0 then
+        window_scale = 1
+    end
 
-    if width / height > options.max_width / options.max_height then
-        effective_w = math.floor(options.max_width * scale + 0.5)
-        effective_h = math.floor(height / width * effective_w + 0.5)
+    if options.scale and options.scale > 0 then
+        local factor = options.scale * window_scale * dpi_scale
+        effective_w = math.max(1, math.floor(width * factor + 0.5))
+        effective_h = math.max(1, math.floor(height * factor + 0.5))
     else
-        effective_h = math.floor(options.max_height * scale + 0.5)
-        effective_w = math.floor(width / height * effective_h + 0.5)
+        local scale = dpi_scale
+        if width / height > options.max_width / options.max_height then
+            effective_w = math.floor(options.max_width * scale + 0.5)
+            effective_h = math.floor(height / width * effective_w + 0.5)
+        else
+            effective_h = math.floor(options.max_height * scale + 0.5)
+            effective_w = math.floor(width / height * effective_h + 0.5)
+        end
     end
 
     local v_par = properties["video-out-params"] and properties["video-out-params"]["par"] or 1
@@ -526,18 +541,18 @@ local function spawn(time)
                                     force_disabled = true
                                     info(real_w or effective_w, real_h or effective_h)
                                 end
-                                mp.commandv("show-text", "thumbfast: ERROR! cannot create mpv subprocess", 5000)
+                                -- mp.commandv("show-text", "thumbfast: ERROR! cannot create mpv subprocess", 5000)
                                 mp.commandv("script-message-to", "implay", "show-message", "thumbfast initial setup", "Set mpv_path=PATH_TO_ImPlay in thumbfast config:\n" .. string.gsub(mp.command_native({"expand-path", "~~/script-opts/thumbfast.conf"}), "[/\\]", path_separator).."\nand restart ImPlay")
                             end
                         else
-                            mp.commandv("show-text", "thumbfast: ERROR! cannot create mpv subprocess", 5000)
+                            -- mp.commandv("show-text", "thumbfast: ERROR! cannot create mpv subprocess", 5000)
                             if os_name == "windows" and frontend_path == nil then
                                 mp.commandv("script-message-to", "mpvnet", "show-text", "thumbfast: ERROR! install standalone mpv, see README", 5000, 20)
                                 mp.commandv("script-message", "mpv.net", "show-text", "thumbfast: ERROR! install standalone mpv, see README", 5000, 20)
                             end
                         end
                     else
-                        mp.commandv("show-text", "thumbfast: ERROR! cannot create mpv subprocess", 5000)
+                        -- mp.commandv("show-text", "thumbfast: ERROR! cannot create mpv subprocess", 5000)
                         -- found ImPlay but not defined in config
                         mp.commandv("script-message-to", "implay", "show-message", "thumbfast", "Set mpv_path=PATH_TO_ImPlay in thumbfast config:\n" .. string.gsub(mp.command_native({"expand-path", "~~/script-opts/thumbfast.conf"}), "[/\\]", path_separator).."\nand restart ImPlay")
                     end
@@ -927,6 +942,9 @@ end)
 
 mp.observe_property("track-list", "native", update_tracklist)
 mp.observe_property("display-hidpi-scale", "native", update_property_dirty)
+if options.scale and options.scale > 0 then
+    mp.observe_property("current-window-scale", "native", update_property_dirty)
+end
 mp.observe_property("video-out-params", "native", update_property_dirty)
 mp.observe_property("video-params", "native", update_property_dirty)
 mp.observe_property("vf", "native", update_property_dirty)
