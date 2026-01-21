@@ -66,11 +66,17 @@ local support_media_control = mp.get_property_native("media-controls") ~= nil
 function subprocess(args, async, callback)
     callback = callback or function() end
 
+    local env = nil
+    local platform = mp.get_property("platform")
+    if platform ~= "windows" then
+        env = "PATH="..os.getenv("PATH")
+    end
+
     if not pre_0_30_0 then
         if async then
-            return mp.command_native_async({name = "subprocess", playback_only = true, args = args}, callback)
+            return mp.command_native_async({name = "subprocess", playback_only = true, args = args, env = env}, callback)
         else
-            return mp.command_native({name = "subprocess", playback_only = false, capture_stdout = true, args = args})
+            return mp.command_native({name = "subprocess", playback_only = false, capture_stdout = true, args = args, env = env})
         end
     else
         if async then
