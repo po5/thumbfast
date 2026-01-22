@@ -66,11 +66,23 @@ local support_media_control = mp.get_property_native("media-controls") ~= nil
 function subprocess(args, async, callback)
     callback = callback or function() end
 
+    local env = nil
+
+    if mp.get_property("platform") == "darwin" then
+        local env_list = mp.utils.get_env_list()
+        env = {}
+        for _, v in ipairs(env_list) do
+            if not v:match("^XPC_SERVICE_NAME=") then
+                table.insert(env, v)
+            end
+        end
+    end
+
     if not pre_0_30_0 then
         if async then
-            return mp.command_native_async({name = "subprocess", playback_only = true, args = args}, callback)
+            return mp.command_native_async({name = "subprocess", playback_only = true, args = args, env = env}, callback)
         else
-            return mp.command_native({name = "subprocess", playback_only = false, capture_stdout = true, args = args})
+            return mp.command_native({name = "subprocess", playback_only = false, capture_stdout = true, args = args, env = env})
         end
     else
         if async then
