@@ -586,9 +586,9 @@ local function run(command)
         file = io.open(options.socket, "r+")
     end
     if file then
-        file_bytes = file:seek("end")
         file:write(command_n)
         file:flush()
+        file_bytes = file_bytes + #command_n
     end
 end
 
