@@ -431,7 +431,7 @@ local function remove_thumbnail_files()
     os.remove(options.thumbnail..".bgra")
 end
 
-local activity_timer
+local activity_timer, run
 
 local function spawn(time)
     if disabled then return end
@@ -449,7 +449,23 @@ local function spawn(time)
     local open_filename = properties["stream-open-filename"]
     local ytdl = open_filename and properties["demuxer-via-network"] and path ~= open_filename
     if ytdl then
-        path = open_filename
+        path = ""
+        local edl = open_filename:gsub("\\", "\\\\")
+            :gsub('"', '\\"'):gsub("\n", "\\n")
+            :gsub("\r", "\\r"):gsub("\t", "\\t")
+        local loadfile_timer
+        loadfile_timer = mp.add_periodic_timer(file_check_period, function()
+            local socket
+            if os_name == "windows" then
+                socket = io.open("\\\\.\\pipe\\"..options.socket, "r")
+            else
+                socket = io.open(options.socket, "r")
+            end
+            if not socket then return end
+            loadfile_timer:kill()
+            socket:close()
+            run(string.format('{"command": ["loadfile", "%s"]}', edl))
+        end)
     end
 
     remove_thumbnail_files()
@@ -553,7 +569,7 @@ local function spawn(time)
     )
 end
 
-local function run(command)
+function run(command)
     if not spawned then return end
 
     if options.direct_io then
