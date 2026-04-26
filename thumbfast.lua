@@ -3,12 +3,159 @@
 -- High-performance on-the-fly thumbnailer
 --
 -- Built for easy integration in third-party UIs.
+--
+-- 本地修改记录（bug fixes）：
+--   1. spawn_generation 计数器：消除 respawn 时老 slave 的 stale callback 误报
+--   2. spawn_time 冷却期：防止冷启动时 named pipe 冲突
+--   3. watch_changes() defer resize：冷却期内不更新 tracking vars，避免 resize 状态丢失
 
 --[[
 This Source Code Form is subject to the terms of the Mozilla Public
 License, v. 2.0. If a copy of the MPL was not distributed with this
 file, You can obtain one at https://mozilla.org/MPL/2.0/.
 ]]
+
+----------------------------------------------------------------------
+-- thumbfast.lua 本地修改笔记 & 调试经验
+----------------------------------------------------------------------
+--
+-- thumbfast 的核心架构：
+--   主 mpv 进程通过 named pipe (Windows: \\.\pipe\thumbfast<PID>)
+--   控制 slave mpv 子进程。slave seek 到指定时间点，截取一帧缩略图
+--   写入临时文件，主进程通过 file_timer 轮询该文件并显示为 overlay。
+--
+-- 【Bug 1：stale callback 误报 "mpv subprocess create failed"】
+--
+-- 现象：缩略图有时正常显示，但仍弹出 "mpv error" 错误提示
+--
+-- 根因：watch_changes() 检测到视频参数变化（resize/rotation）时，
+-- 会 kill 当前 slave 并 spawn 新 slave。但老 slave 的异步 callback
+-- 在新 spawn 设置 spawn_waiting=true 之后才触发，导致：
+--   1. 老 callback 看到 spawn_waiting==true（新 spawn 设的）
+--   2. 老 slave 被 kill 后 result.status ≠ 0
+--   3. 误判为新 spawn 失败 → 报错
+--   4. spawned 被错误清为 false，tone_mapping 被错误禁用
+--
+-- 修复：spawn_generation 计数器
+--   - 每次 spawn() 递增 spawn_generation
+--   - callback 通过闭包捕获 current_generation
+--   - 如果 current_generation ≠ spawn_generation，说明是老 callback，直接 return
+--   - 这样老 callback 不会干扰新 slave 的状态
+--
+-- 关键代码位置：
+--   - spawn_generation 声明：约第 144 行
+--   - spawn() 中递增和闭包捕获：约第 512-514 行
+--   - callback 中的代际检查：约第 517-518 行
+--
+-- 设计原则：
+--   - spawn_waiting 仍然需要——它追踪"当前 spawn 是否已产出第一个缩略图"
+--   - spawn_generation 追踪"这是哪一次 spawn 的 callback"
+--   - 两者解决不同问题，不可互相替代
+--   - Lua 闭包正确捕获 local 变量值（非引用），每次 spawn 创建独立 upvalue
+--
+-- 【Bug 2：冷启动时 named pipe 冲突导致 slave 启动失败】
+--
+-- 现象：mpv 冷启动后第一次 hover seekbar 时报错，之后正常
+--
+-- 根因：冷启动时的时序竞争：
+--   1. file_load() → calc_dimensions() → effective_w/h = 200x200（占位值）
+--   2. video-out-params 到达 → watch_changes() → effective = 200x113
+--   3. 用户 hover → thumb() → spawn() → slave A 启动（管道尚未建立）
+--   4. 另一个属性变化 → dirty=true → watch_changes() 再次触发
+--   5. spawned=true + resized=true → run("quit") 发向 slave A
+--   6. 但 slave A 的管道还没准备好 → quit 命令丢失
+--   7. spawn() 启动 slave B → 尝试创建同名管道 → 失败（slave A 还占着）
+--   8. slave B 报错 → callback 中 generation 正确 → 真实错误被报告
+--
+-- 注意：generation 计数器无法防止此问题，因为报错的是新 slave（generation 正确）
+--
+-- 修复：spawn_time 冷却期
+--   - 每次 spawn() 记录 spawn_time = mp.get_time()
+--   - watch_changes() 中，如果距上次 spawn 不足 0.5s，跳过 kill+respawn
+--   - 0.5s 是经验值：mpv 子进程启动 + 创建 IPC 管道通常 < 200ms
+--   - 对于极慢系统可能不够，但可接受
+--
+-- 【Bug 3：冷却期内 tracking vars 被更新导致 resize 永久丢失】
+--
+-- 现象：如果 Bug 2 的修复只是简单跳过 kill+respawn，缩略图尺寸会错
+--
+-- 根因：watch_changes() 的 resize 检测使用"增量"模型：
+--   - old_w = effective_w（当前值）
+--   - calc_dimensions() 可能更新 effective_w
+--   - resized = (old_w ≠ effective_w) or (last_vf_reset ≠ vf_reset) or ...
+--
+--   如果跳过 respawn 但仍然更新 tracking vars（last_vf_reset 等），
+--   下次 watch_changes() 时所有比较都相等，resized=false，
+--   slave 永远不会被修正到正确尺寸。
+--
+--   更严重的是：slave 用旧尺寸输出缩略图，但 effective_w/h 是新值，
+--   real_res() 检测到像素数不匹配 → 返回 nil → 缩略图被拒绝 → 不显示
+--
+-- 修复：
+--   1. 将 last_rotate = rotate 和 info() 从 cooldown 检查之前移到之后
+--      只在确认要 respawn 时才更新这些状态
+--   2. skip 分支中 dirty = true; return
+--      - dirty=true 确保 watch_changes() 在下次 idle cycle 重新执行
+--      - return 阻止后续的 tracking vars 更新（last_vf_reset 等）
+--   3. 下次执行时 resized 仍为 true（tracking vars 未被更新）
+--      如果冷却期已过，正常 kill+respawn
+--      如果冷却期未过，再次 skip 并保持 dirty=true
+--
+-- watch_changes() 中三段修改的最终结构：
+--   if resized then
+--       -- 不再在这里更新 last_rotate，defer 到确认 respawn 后
+--   elseif ... then
+--       info(...)
+--   end
+--
+--   if spawned then
+--       if resized then
+--           if 冷却期内 then
+--               dirty = true; return   -- ← 阻止 tracking vars 更新
+--           end
+--           last_rotate = rotate       -- ← 只在确认 respawn 时更新
+--           info(...)
+--           run("quit") / clear() / spawn()
+--       else
+--           -- runtime updates (rotation, vf)
+--       end
+--   else
+--       last_vf_runtime = ...
+--   end
+--
+--   -- 只在未 skip 时执行：
+--   last_vf_reset = vf_reset
+--   last_rotate = rotate
+--   ...
+--
+-- 【mpv Lua 异步编程经验】
+--
+-- 1. mpv Lua 脚本是单线程事件循环，无并发竞争
+--    observer callback 和 tick()/render() 在同一线程中调度
+--    一旦 callback 开始执行，不会被另一个 callback 打断
+--
+-- 2. mp.command_native_async 的 callback 在子进程退出时触发
+--    callback 接收 (success, result) 参数
+--    result.status = 0 表示正常退出，-2 表示被信号终止
+--    注意：callback 触发时机不确定，可能在多次 spawn 之后
+--
+-- 3. Windows named pipe 特殊行为：
+--    - \\.\pipe\<name> 由 slave 进程创建（--input-ipc-server）
+--    - 如果 slave 尚未启动完成，CreateFileW 返回 INVALID_HANDLE_VALUE
+--    - run() 函数不返回成功/失败，命令可能被静默丢弃
+--    - 同名管道只能由一个进程持有，新老 slave 不能共存
+--
+-- 4. watch_changes() 的增量检测模型：
+--    - 用 old_w/old_h 与 effective_w/effective_h 比较检测变化
+--    - calc_dimensions() 直接修改全局 effective_w/h
+--    - 一旦比较完成并更新 tracking vars，变化就"消失"了
+--    - 如果需要在稍后重新检测，必须阻止 tracking vars 更新
+--
+-- 5. mp.register_idle() 注册的回调在事件循环空闲时反复调用
+--    设置 dirty=true 可以确保回调在下一次 idle 时重新执行
+--    这比 mp.add_timeout 更简单，适合"稍后重试"场景
+--
+----------------------------------------------------------------------
 
 local options = {
     -- Socket path (leave empty for auto)
@@ -141,6 +288,8 @@ local force_disabled = false
 local spawn_waiting = false
 local spawn_working = false
 local script_written = false
+local spawn_generation = 0
+local spawn_time = 0
 
 local dirty = false
 
@@ -507,9 +656,15 @@ local function spawn(time)
 
     spawned = true
     spawn_waiting = true
+    spawn_generation = spawn_generation + 1
+    spawn_time = mp.get_time()
+    local current_generation = spawn_generation
 
     subprocess(args, true,
         function(success, result)
+            -- Ignore stale callbacks from previous spawn generations
+            if current_generation ~= spawn_generation then return end
+
             if spawn_waiting and (success == false or (result.status ~= 0 and result.status ~= -2)) then
                 spawned = false
                 spawn_waiting = false
@@ -800,8 +955,7 @@ local function watch_changes()
         par ~= last_par or last_crop ~= properties["video-crop"]
 
     if resized then
-        last_rotate = rotate
-        info(effective_w, effective_h)
+        -- state update deferred until after cooldown check
     elseif last_has_vid ~= has_vid and has_vid ~= 0 then
         info(effective_w, effective_h)
     end
@@ -809,6 +963,17 @@ local function watch_changes()
     if spawned then
         if resized then
             -- mpv doesn't allow us to change output size
+            -- but don't kill a slave that just started (pipe may not be ready yet)
+            if mp.get_time() - spawn_time < 0.5 then
+                -- slave still starting up, skip respawn to avoid pipe conflict
+                -- keep dirty so we retry on next idle cycle after cooldown expires
+                dirty = true
+                return
+            end
+
+            last_rotate = rotate
+            info(effective_w, effective_h)
+
             local seek_time = last_seek_time
             run("quit")
             clear()
