@@ -408,6 +408,7 @@ local function info(w, h)
         (albumart and not options.audio) or
         (image and not albumart) or
         force_disabled
+    mp.set_property_bool("user-data/osc/thumbnailer-enabled", not disabled)
 
     if info_timer then
         info_timer:kill()
