@@ -157,6 +157,9 @@ local last_real_w, last_real_h
 
 local script_name
 
+local preview_draw = nil
+local preview_ass = mp.create_osd_overlay("ass-events")
+
 local show_thumbnail = false
 
 local filters_reset = {["lavfi-crop"]=true, ["crop"]=true}
@@ -407,6 +410,7 @@ local function info(w, h)
         (albumart and not options.audio) or
         (image and not albumart) or
         force_disabled
+    mp.set_property_bool("user-data/osc/thumbnailer-enabled", not disabled)
 
     if info_timer then
         info_timer:kill()
@@ -597,11 +601,33 @@ end
 local function draw(w, h, script)
     if not w or not show_thumbnail then return end
     if x ~= nil then
-        local scale_w, scale_h = options.scale_factor ~= 1 and (w * options.scale_factor) or nil, options.scale_factor ~= 1 and (h * options.scale_factor) or nil
+        local cmd_x, cmd_y = x, y
+        local cmd_w, cmd_h = w, h
+        local preview = preview_draw and preview_draw.x and preview_draw.y and preview_draw.w and preview_draw.h
+        if preview then
+            cmd_x, cmd_y = preview_draw.x, preview_draw.y
+            cmd_w, cmd_h = preview_draw.w, preview_draw.h
+        elseif options.scale_factor ~= 1 then
+            cmd_w = w * options.scale_factor
+            cmd_h = h * options.scale_factor
+        end
+
+        local cmd = {"overlay-add", options.overlay_id, cmd_x, cmd_y, options.thumbnail..".bgra", 0, "bgra", w, h, (4*w), cmd_w, cmd_h}
         if pre_0_30_0 then
-            mp.command_native({"overlay-add", options.overlay_id, x, y, options.thumbnail..".bgra", 0, "bgra", w, h, (4*w), scale_w, scale_h})
+            mp.command_native(cmd)
         else
-            mp.command_native_async({"overlay-add", options.overlay_id, x, y, options.thumbnail..".bgra", 0, "bgra", w, h, (4*w), scale_w, scale_h}, function() end)
+            mp.command_native_async(cmd, function() end)
+        end
+
+        if preview then
+            local ass = preview_draw.ass or ""
+            local osd_w, osd_h = mp.get_osd_size()
+            if osd_w > 0 and osd_h > 0 then
+                preview_ass.res_x = osd_w
+                preview_ass.res_y = osd_h
+                preview_ass.data = ass
+                preview_ass:update()
+            end
         end
     elseif script then
         local json, err = mp.utils.format_json({width=w, height=h, scale_factor=options.scale_factor, x=x, y=y, socket=options.socket, thumbnail=options.thumbnail, overlay_id=options.overlay_id})
@@ -714,7 +740,7 @@ file_timer = mp.add_periodic_timer(file_check_period, function()
 end)
 file_timer:kill()
 
-local function clear()
+local function clear(force_overlay_remove)
     file_timer:kill()
     seek_timer:kill()
     if options.quit_after_inactivity > 0 then
@@ -727,7 +753,8 @@ local function clear()
     show_thumbnail = false
     last_x = nil
     last_y = nil
-    if script_name then return end
+    preview_ass:remove()
+    if script_name and not force_overlay_remove then return end
     if pre_0_30_0 then
         mp.command_native({"overlay-remove", options.overlay_id})
     else
@@ -781,6 +808,18 @@ local function thumb(time, r_x, r_y, script)
     if not spawned then spawn(time) end
     request_seek()
     if not file_timer:is_enabled() then file_timer:resume() end
+end
+
+local function preview_update_draw(name, value)
+    preview_draw = value
+
+    if preview_draw == nil then
+        clear(true)
+        return
+    end
+
+    local hover_sec = mp.get_property_number("user-data/osc/hover-sec")
+    thumb(hover_sec, value.x, value.y, nil)
 end
 
 local function watch_changes()
@@ -891,7 +930,8 @@ local function sync_changes(prop, val)
 end
 
 local function file_load()
-    clear()
+    preview_draw = nil
+    clear(true)
     spawned = false
     real_w, real_h = nil, nil
     last_real_w, last_real_h = nil, nil
@@ -943,6 +983,8 @@ mp.observe_property("path", "native", update_property)
 mp.observe_property("vid", "native", sync_changes)
 mp.observe_property("edition", "native", sync_changes)
 mp.observe_property("duration", "native", on_duration)
+
+mp.observe_property("user-data/osc/draw-preview", "native", preview_update_draw)
 
 mp.register_script_message("thumb", thumb)
 mp.register_script_message("clear", clear)
