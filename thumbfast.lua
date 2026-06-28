@@ -67,10 +67,15 @@ function subprocess(args, async, callback)
     callback = callback or function() end
 
     if not pre_0_30_0 then
+        local env = {
+            "TMP="..os.getenv("TMP"),
+            "TEMP="..os.getenv("TEMP"),
+            "PATH="..os.getenv("PATH"),
+        }
         if async then
-            return mp.command_native_async({name = "subprocess", playback_only = true, args = args, env = "PATH="..os.getenv("PATH")}, callback)
+            return mp.command_native_async({name = "subprocess", playback_only = true, args = args, env = env}, callback)
         else
-            return mp.command_native({name = "subprocess", playback_only = false, capture_stdout = true, args = args, env = "PATH="..os.getenv("PATH")})
+            return mp.command_native({name = "subprocess", playback_only = false, capture_stdout = true, args = args, env = env})
         end
     else
         if async then
