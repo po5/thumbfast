@@ -465,7 +465,7 @@ local function spawn(time)
         "--edition="..(properties["edition"] or "auto"), "--vid="..(vid or "auto"), "--no-sub", "--no-audio",
         "--start="..time, allow_fast_seek and "--hr-seek=no" or "--hr-seek=yes",
         "--ytdl-format=worst", "--demuxer-readahead-secs=0", "--demuxer-max-bytes=128KiB",
-        "--vd-lavc-skiploopfilter=all", "--vd-lavc-software-fallback=1", "--vd-lavc-fast", "--vd-lavc-threads=2", "--hwdec="..(options.hwdec and "auto" or "no"),
+        "--vd-lavc-skiploopfilter=all", "--vd-lavc-software-fallback=1", "--vd-lavc-fast", "--vd-lavc-threads=2", "--hwdec="..(options.hwdec and (properties["hwdec"] or "auto") or "no"),
         "--vf="..vf_string(filters_all, true),
         "--sws-scaler=fast-bilinear",
         "--video-rotate="..last_rotate,
@@ -919,6 +919,10 @@ local function on_duration(prop, val)
     allow_fast_seek = (val or 30) >= 30
 end
 
+local function update_hwdec(prop, val)
+    properties["hwdec"] = type(val) == "table" and table.concat(val, ",") or val
+end
+
 mp.observe_property("current-tracks/video", "native", function(name, value)
     if pre_0_33_0 then
         mp.unobserve_property(update_tracklist)
@@ -943,6 +947,7 @@ mp.observe_property("path", "native", update_property)
 mp.observe_property("vid", "native", sync_changes)
 mp.observe_property("edition", "native", sync_changes)
 mp.observe_property("duration", "native", on_duration)
+mp.observe_property("hwdec", "native", update_hwdec)
 
 mp.register_script_message("thumb", thumb)
 mp.register_script_message("clear", clear)
