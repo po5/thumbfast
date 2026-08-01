@@ -145,6 +145,7 @@ local spawn_working = false
 local script_written = false
 
 local dirty = false
+local priming = false
 
 local x, y
 local last_x, last_y
@@ -463,7 +464,7 @@ local function spawn(time)
         mpv_path, "--no-config", "--msg-level=all=no", "--idle", "--pause", "--keep-open=always", "--really-quiet", "--no-terminal",
         "--load-scripts=no", "--osc=no", "--ytdl=no", "--load-stats-overlay=no", "--load-osd-console=no", "--load-auto-profiles=no",
         "--edition="..(properties["edition"] or "auto"), "--vid="..(vid or "auto"), "--no-sub", "--no-audio",
-        "--start="..time, allow_fast_seek and "--hr-seek=no" or "--hr-seek=yes",
+        "--start=0", allow_fast_seek and "--hr-seek=no" or "--hr-seek=yes",
         "--ytdl-format=worst", "--demuxer-readahead-secs=0", "--demuxer-max-bytes=128KiB",
         "--vd-lavc-skiploopfilter=all", "--vd-lavc-software-fallback=1", "--vd-lavc-fast", "--vd-lavc-threads=2", "--hwdec="..(options.hwdec and "auto" or "no"),
         "--vf="..vf_string(filters_all, true),
@@ -509,6 +510,7 @@ local function spawn(time)
 
     spawned = true
     spawn_waiting = true
+    priming = true
 
     subprocess(args, true,
         function(success, result)
@@ -701,6 +703,13 @@ local function check_new_thumb()
         if not show_thumbnail then
             file_timer:kill()
         end
+
+        if priming then
+            priming = false
+            seek(allow_fast_seek)
+            return false
+        end
+
         return true
     end
 
@@ -893,6 +902,7 @@ end
 local function file_load()
     clear()
     spawned = false
+    priming = false
     real_w, real_h = nil, nil
     last_real_w, last_real_h = nil, nil
     last_tone_mapping = nil
