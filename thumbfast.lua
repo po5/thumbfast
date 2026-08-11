@@ -143,6 +143,8 @@ local force_disabled = false
 local spawn_waiting = false
 local spawn_working = false
 local script_written = false
+local launchd_script_written = false
+local launchd_spawn_id = 0
 
 local dirty = false
 
@@ -190,6 +192,16 @@ MPV_IPC_FD=0; MPV_IPC_PATH="%s"
 trap "kill 0" EXIT
 while [[ $# -ne 0 ]]; do case $1 in --mpv-ipc-fd=*) MPV_IPC_FD=${1/--mpv-ipc-fd=/} ;; esac; shift; done
 if echo "print-text thumbfast" >&"$MPV_IPC_FD"; then echo -n > "$MPV_IPC_PATH"; tail -f "$MPV_IPC_PATH" >&"$MPV_IPC_FD" & while read -r -u "$MPV_IPC_FD" 2>/dev/null; do :; done; fi
+]=]
+
+local launchd_script = [=[
+label=$1
+shift
+"$@"
+status=$?
+# Submitted jobs are kept alive by launchd unless they remove themselves.
+/bin/launchctl remove "$label" >/dev/null 2>&1 || true
+exit "$status"
 ]=]
 
 local function get_os()
@@ -278,6 +290,13 @@ options.scale_factor = math.floor(options.scale_factor)
 
 local mpv_path = options.mpv_path
 local frontend_path
+local parent_path
+local macos_app_bundle = false
+
+if os_name == "darwin" and unique then
+    parent_path = string.gsub(subprocess({"ps", "-o", "comm=", "-p", tostring(unique)}).stdout, "[\n\r]", "")
+    macos_app_bundle = parent_path:find("%.app/Contents/MacOS/") ~= nil
+end
 
 if mpv_path == "mpv" and os_name == "windows" then
     frontend_path = mp.get_property_native("user-data/frontend/process-path")
@@ -286,7 +305,7 @@ end
 
 if mpv_path == "mpv" and os_name == "darwin" and unique then
     -- TODO: look into ~~osxbundle/
-    mpv_path = string.gsub(subprocess({"ps", "-o", "comm=", "-p", tostring(unique)}).stdout, "[\n\r]", "")
+    mpv_path = parent_path
     if mpv_path ~= "mpv" then
         mpv_path = string.gsub(mpv_path, "/mpv%-bundle$", "/mpv")
         local mpv_bin = mp.utils.file_info("/usr/local/mpv")
@@ -435,6 +454,37 @@ end
 
 local activity_timer
 
+local function wrap_macos_launchd(args)
+    if not macos_app_bundle then return args end
+
+    -- Finder-launched app bundles can pass their foreground LaunchServices
+    -- state to the encoder, which creates a second Dock icon. A launchd job
+    -- starts the standalone worker as a background UIElement instead.
+    local launchd_script_path = options.socket..".launchd"
+    if not launchd_script_written then
+        local script = io.open(launchd_script_path, "w+")
+        if script == nil then
+            mp.msg.error("launchd script write failed")
+            return nil
+        end
+        launchd_script_written = true
+        script:write(launchd_script)
+        script:close()
+    end
+
+    launchd_spawn_id = launchd_spawn_id + 1
+    local label = "local.thumbfast."..unique.."."..launchd_spawn_id
+    local wrapped = {
+        "/bin/launchctl", "submit", "-l", label,
+        "-o", "/dev/null", "-e", "/dev/null", "--",
+        "/bin/sh", launchd_script_path, label
+    }
+    for _, arg in ipairs(args) do
+        table.insert(wrapped, arg)
+    end
+    return wrapped
+end
+
 local function spawn(time)
     if disabled then return end
 
@@ -506,6 +556,9 @@ local function spawn(time)
 
     table.insert(args, "--")
     table.insert(args, path)
+
+    args = wrap_macos_launchd(args)
+    if args == nil then return end
 
     spawned = true
     spawn_waiting = true
@@ -912,6 +965,7 @@ local function shutdown()
     if os_name ~= "windows" then
         os.remove(options.socket)
         os.remove(options.socket..".run")
+        os.remove(options.socket..".launchd")
     end
 end
 
