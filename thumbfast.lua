@@ -866,6 +866,10 @@ local function thumb(time, r_x, r_y, script)
     time = tonumber(time)
     if time == nil then return end
 
+    if not using_storyboards then
+        thumbnail_path = options.thumbnail
+    end
+
     if r_x == "" or r_y == "" then
         x, y = nil, nil
     else
