@@ -453,6 +453,17 @@ local function spawn(time)
     if ytdl then
         path = open_filename
     end
+    -- Extract the media URL from the edl:// filename; the full edl exceeds the command line limit
+    if path:sub(1, 6) == "edl://" then
+        local s, e, len = path:find(";%%([%d]+)%%")
+        if s then
+            local n = tonumber(len)
+            local url = path:sub(e + 1, e + n)
+            if url:sub(1, 4) == "http" then
+                path = url
+            end
+        end
+    end
 
     remove_thumbnail_files()
 
