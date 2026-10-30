@@ -1306,7 +1306,7 @@ function window_controls(topbar)
     -- Window Title
     ne = new_element("wctitle", "button")
     ne.content = function ()
-        local title = mp.command_native({"expand-text", user_opts.title})
+        local title = mp.command_native({"expand-text", user_opts.windowcontrols_title})
         -- escape ASS, and strip newlines and trailing slashes
         title = title:gsub("\\n", " "):gsub("\\$", ""):gsub("{","\\{")
         return not (title == "") and title or "mpv"
