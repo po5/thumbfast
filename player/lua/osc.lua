@@ -50,7 +50,7 @@ local user_opts = {
     seekrangealpha = 200,       -- transparency of seekranges
     seekbarkeyframes = true,    -- use keyframes when dragging the seekbar
     scrollcontrols = true,      -- allow scrolling when hovering certain OSC elements
-    title = "${media-title}",   -- string compatible with property-expansion
+    title = "${media-title}",   -- string compatible with property-expansion for the seekbar title
                                 -- to be shown as OSC title
     tooltipborder = 1,          -- border of tooltip in bottom/topbar
     timetotal = false,          -- display total time instead of remaining time?
@@ -62,6 +62,7 @@ local user_opts = {
     boxmaxchars = 80,           -- title crop threshold for box layout
     boxvideo = false,           -- apply osc_param.video_margins to video
     windowcontrols = "auto",    -- whether to show window controls
+    windowcontrols_title = "${media-title}", -- string compatible with property-expansion for the window controls title
     windowcontrols_alignment = "right", -- which side to show window controls on
     greenandgrumpy = false,     -- disable santa hat
     livemarkers = true,         -- update seekbar chapter markers on duration change
