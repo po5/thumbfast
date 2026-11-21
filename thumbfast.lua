@@ -453,6 +453,12 @@ local function add_parent_http_options(args)
     end
 
     local referrer = get_parent_option("referrer")
+    if type(referrer) ~= "string" or referrer == "" then
+        local url = properties["stream-open-filename"] or properties["path"]
+        if type(url) == "string" and url:match("^https?://") then
+            referrer = url
+        end
+    end
     if type(referrer) == "string" and referrer ~= "" then
         table.insert(args, "--referrer=" .. referrer)
     end
