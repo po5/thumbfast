@@ -569,10 +569,8 @@ local function spawn(time)
     local network = properties["demuxer-via-network"] == true
 
     local args = {
-        mpv_path, "--no-config", "--msg-level=all=debug", "--log-file="..options.thumbnail..".log",
-        "--idle", "--pause", "--keep-open=always", "--no-terminal",
-        "--load-scripts=no", "--osc=no", "--ytdl=no",
-        "--load-stats-overlay=no",
+        mpv_path, "--no-config", "--msg-level=all=no", "--idle", "--pause", "--keep-open=always", "--really-quiet", "--no-terminal",
+        "--load-scripts=no", "--osc=no", "--ytdl=no", "--load-stats-overlay=no", "--load-osd-console=no", "--load-auto-profiles=no",
         "--edition="..tostring(get_thumbnail_edition(ytdl)), "--vid="..thumb_vid, "--no-sub", "--no-audio",
         "--start="..time, allow_fast_seek and "--hr-seek=no" or "--hr-seek=yes",
         "--ytdl-format=worst",
@@ -590,9 +588,9 @@ local function spawn(time)
 
     if network then
         table.insert(args, "--cache=yes")
-        table.insert(args, "--cache-secs=2")
-        table.insert(args, "--demuxer-readahead-secs=0")
-        table.insert(args, "--demuxer-max-bytes=2MiB")
+        table.insert(args, "--cache-secs=5")
+        table.insert(args, "--demuxer-readahead-secs=2")
+        table.insert(args, "--demuxer-max-bytes=8MiB")
     else
         table.insert(args, "--demuxer-readahead-secs=0")
         table.insert(args, "--demuxer-max-bytes=128KiB")
