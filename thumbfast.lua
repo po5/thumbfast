@@ -401,8 +401,13 @@ local function info(w, h)
     local image = properties["current-tracks/video"] and properties["current-tracks/video"]["image"]
     local albumart = image and properties["current-tracks/video"]["albumart"]
 
+    local path = properties["path"]
+    local is_pipe = path == "-" or path == "/dev/stdin" or
+        (path ~= nil and (path:find("^fd://") or path:find("^fdclose://")) ~= nil)
+
     disabled = (w or 0) == 0 or (h or 0) == 0 or
         has_vid == 0 or
+        is_pipe or
         (properties["demuxer-via-network"] and not options.network) or
         (albumart and not options.audio) or
         (image and not albumart) or
