@@ -440,6 +440,115 @@ end
 
 local activity_timer
 
+-- Read an option from the currently playing file first, then fall back to
+-- mpv's global option. This lets the thumbnail subprocess inherit the
+-- request settings used by the main player without hard-coding a site.
+local function get_parent_option(name)
+    local value = mp.get_property_native("file-local-options/" .. name)
+    if value == nil then
+        value = mp.get_property_native("options/" .. name)
+    end
+    return value
+end
+
+local function add_parent_http_options(args)
+    local user_agent = get_parent_option("user-agent")
+    if type(user_agent) == "string" and user_agent ~= "" then
+        table.insert(args, "--user-agent=" .. user_agent)
+    end
+
+    local referrer = get_parent_option("referrer")
+    if type(referrer) ~= "string" or referrer == "" then
+        local url = properties["stream-open-filename"] or properties["path"]
+        if type(url) == "string" and url:match("^https?://") then
+            referrer = url
+        end
+    end
+    if type(referrer) == "string" and referrer ~= "" then
+        table.insert(args, "--referrer=" .. referrer)
+    end
+
+    local headers = get_parent_option("http-header-fields")
+    if type(headers) == "table" then
+        local fields = {}
+        for _, field in ipairs(headers) do
+            if type(field) == "string" and field ~= "" then
+                table.insert(fields, field)
+            end
+        end
+        if #fields > 0 then
+            table.insert(args, "--http-header-fields=" .. table.concat(fields, ","))
+        end
+    elseif type(headers) == "string" and headers ~= "" then
+        table.insert(args, "--http-header-fields=" .. headers)
+    end
+end
+
+-- Pick the lowest-resolution yt-dlp edition for thumbnail decoding only.
+-- If the edition list is unavailable or cannot be interpreted, leave the
+-- current/default selection unchanged rather than guessing an edition ID.
+local function get_thumbnail_edition(ytdl)
+    if not ytdl then
+        return properties["edition"] or "auto"
+    end
+
+    local editions = mp.get_property_native("edition-list")
+    if type(editions) ~= "table" or #editions == 0 then
+        return properties["edition"] or "auto"
+    end
+
+    if #editions == 1 then
+        return editions[1].id or properties["edition"] or "auto"
+    end
+
+    local codec_priority = {
+        ["h264"] = 1,
+        ["avc"] = 1,
+        ["hevc"] = 2,
+        ["h265"] = 2,
+        ["av1"] = 3
+    }
+
+    local best_id, best_area, best_codec = nil, nil, nil
+    for _, edition in ipairs(editions) do
+        local title = tostring(edition.title or "")
+        local width, height
+
+        -- Prefer explicit dimensions such as 640x294 when present.
+        local w, h = title:match("(%d+)%s*[xX×]%s*(%d+)")
+        if w and h then
+            width, height = tonumber(w), tonumber(h)
+        else
+            -- Otherwise interpret labels such as 360P / 720P / 1080P.
+            local vertical = title:match("(%d+)%s*[pP]")
+            if vertical then
+                height = tonumber(vertical)
+                -- The precise aspect ratio is not needed for ranking; using
+                -- the vertical resolution preserves the correct ordering.
+                width = height
+            end
+        end
+
+        if width and height and width > 0 and height > 0 and edition.id ~= nil then
+            local area = width * height
+            local lower_title = title:lower()
+            local codec = 99
+            for name, priority in pairs(codec_priority) do
+                if lower_title:find(name, 1, true) then
+                    codec = math.min(codec, priority)
+                end
+            end
+
+            if best_area == nil or area < best_area or
+                (area == best_area and codec < best_codec) then
+                best_id, best_area, best_codec = edition.id, area, codec
+            end
+        end
+    end
+
+    return best_id or properties["edition"] or "auto"
+end
+
 local function spawn(time)
     if disabled then return end
 
@@ -464,18 +573,40 @@ local function spawn(time)
     local vid = properties["vid"]
     has_vid = vid or 0
 
+    -- yt-dlp EDL streams may have different track IDs
+    -- in the thumbnail subprocess.
+    local thumb_vid = ytdl and "auto" or (vid or "auto")
+
+    local network = properties["demuxer-via-network"] == true
+
     local args = {
         mpv_path, "--no-config", "--msg-level=all=no", "--idle", "--pause", "--keep-open=always", "--really-quiet", "--no-terminal",
         "--load-scripts=no", "--osc=no", "--ytdl=no", "--load-stats-overlay=no", "--load-osd-console=no", "--load-auto-profiles=no",
-        "--edition="..(properties["edition"] or "auto"), "--vid="..(vid or "auto"), "--no-sub", "--no-audio",
+        "--edition="..tostring(get_thumbnail_edition(ytdl)), "--vid="..thumb_vid, "--no-sub", "--no-audio",
         "--start="..time, allow_fast_seek and "--hr-seek=no" or "--hr-seek=yes",
-        "--ytdl-format=worst", "--demuxer-readahead-secs=0", "--demuxer-max-bytes=128KiB",
+        "--ytdl-format=worst",
         "--vd-lavc-skiploopfilter=all", "--vd-lavc-software-fallback=1", "--vd-lavc-fast", "--vd-lavc-threads=2", "--hwdec="..(options.hwdec and "auto" or "no"),
         "--vf="..vf_string(filters_all, true),
         "--sws-scaler=fast-bilinear",
         "--video-rotate="..last_rotate,
         "--ovc=rawvideo", "--of=image2", "--ofopts=update=1", "--o="..options.thumbnail
     }
+
+    -- Pass through the main player's current HTTP request options when
+    -- mpv exposes them. yt-dlp may use additional internal headers/cookies
+    -- that are not available as mpv properties and therefore cannot be copied.
+    add_parent_http_options(args)
+
+    if network then
+        table.insert(args, "--cache=yes")
+        table.insert(args, "--cache-secs=5")
+        table.insert(args, "--demuxer-readahead-secs=2")
+        table.insert(args, "--demuxer-max-bytes=8MiB")
+    else
+        table.insert(args, "--demuxer-readahead-secs=0")
+        table.insert(args, "--demuxer-max-bytes=128KiB")
+    end
+
 
     if not pre_0_30_0 then
         table.insert(args, "--sws-allow-zimg=no")
