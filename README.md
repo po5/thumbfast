@@ -25,6 +25,8 @@ Support for <0.33.0 on Linux requires socat.
 Once the lua file is in your scripts directory, and you are using a UI that supports thumbfast, you are done.  
 Hover on the timeline for nice thumbnails.
 
+thumbfast also supports mpv's OSC preview API (`user-data/osc/draw-preview`) when available, and prefers it over the legacy script messages while active.
+
 ## UI support
 - [uosc](https://github.com/tomasklaen/uosc)
 - [osc.lua](https://github.com/po5/thumbfast/blob/vanilla-osc/player/lua/osc.lua) (use this fork for vanilla UI)
